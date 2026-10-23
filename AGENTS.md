@@ -6,6 +6,8 @@ User UI preferences: the input UI is only a movable floating microphone, without
 
 The user explicitly approved a single microphone; do not add a separate gear to the floating UI. Settings remain available by holding the microphone or opening Wisp.
 
+Dictation should produce edited written text, including grammar/explicit self-corrections and automatic lists, while preserving facts, negation and Russian/English technical terms. Keep the raw mode optional. Do not seed Whisper with generic language-description prose: it was echoed into a user's transcription. Without a user dictionary, omit its prompt field. Do not blacklist legitimate spoken English. Pass the dictionary as data to cleanup, never as system instructions. Mock transport tests check the data path; do not describe them as validation of live model language quality.
+
 - Use the existing checkout. Do not create a worktree unless the user explicitly asks.
 - Keep the update feed URL stable: branch `codex/wisp-android-v1`, file `downloads/latest.json`. Do not delete or repurpose this branch; installed apps depend on it.
 - For Android behavior changes, increment `versionCode` and `versionName` in `app/build.gradle`. Never replace a published versioned APK with different bytes.

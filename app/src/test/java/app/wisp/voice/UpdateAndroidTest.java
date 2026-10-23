@@ -28,11 +28,16 @@ import android.os.Looper;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk=35)
 public class UpdateAndroidTest {
-    @Before public void disableAutoCheck(){
+    @Before public void disableAutoCheck()throws Exception{
         RuntimeEnvironment.getApplication().getSharedPreferences("wisp_updates",0).edit().putBoolean("auto_check",false).commit();
         // Robolectric creates a new application cache directory for every method,
         // while AndroidX's process-wide provider path cache survives in this sandbox.
         java.util.Map<?,?> paths=ReflectionHelpers.getStaticField(androidx.core.content.FileProvider.class,"sCache");paths.clear();
+        // These upgrade fixtures always model 1.0.3 -> 1.0.4, independent of the
+        // version currently being built, so future release bumps do not invalidate them.
+        var context=RuntimeEnvironment.getApplication();var pm=context.getPackageManager();
+        PackageInfo installed=pm.getPackageInfo(context.getPackageName(),PackageManager.GET_SIGNING_CERTIFICATES|PackageManager.GET_ACTIVITIES|PackageManager.GET_PROVIDERS|PackageManager.GET_META_DATA);
+        installed.setLongVersionCode(4);installed.versionName="1.0.3";Shadows.shadowOf(pm).installPackage(installed);
     }
     private UpdateInfo next(){return new UpdateInfo(5,"1.0.4",28,"https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.4.apk","0".repeat(64),1,"Доступно обновление");}
     private PackageInfo pkg(int version,String name,String signer){

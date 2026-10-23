@@ -13,7 +13,7 @@ final class DictationPipeline {
         recognized.accept(original);
         if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();
         try {
-            String text=api.clean(original,key,mode);
+            String text=api.clean(original,key,mode,vocabulary);
             return new Result(original,text,"");
         } catch(Exception e) {
             if(Thread.currentThread().isInterrupted()||e instanceof InterruptedIOException && !(e instanceof java.net.SocketTimeoutException))throw e;

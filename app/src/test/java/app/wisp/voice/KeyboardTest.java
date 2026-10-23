@@ -52,7 +52,7 @@ public class KeyboardTest {
     @Test public void settingsExposeUpdatesLanguageAndCleanupWithoutBlockingScreenshots(){
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
             View root=a.get().getWindow().getDecorView();assertNotNull(find(root,"Проверить обновления"));
-            assertNotNull(find(root,"Язык: русский + English (авто)"));assertNotNull(find(root,"Обработка: чистый текст"));
+            assertNotNull(find(root,"Язык: русский + English (авто)"));assertNotNull(find(root,"Обработка: умный текст"));
             find(root,"Язык: русский + English (авто)").performClick();assertNotNull(find(root,"Язык: русский"));
             assertEquals(0,a.get().getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE);
         }
@@ -73,6 +73,13 @@ public class KeyboardTest {
     @Test public void processedTextIsAutomaticallyCommittedToActualEditable()throws Exception{
         var c=Robolectric.buildService(WispImeService.class).create();try{
             WispImeService s=c.get();s.onCreateInputView();Editable text=connect(s,"Привет");deliver(s,generation(s),"новый мир","");assertEquals("Привет новый мир",text.toString());
+        }finally{c.destroy();}
+    }
+    @Test public void automaticallyInsertedListKeepsLineBreaksAndEnglishTerms()throws Exception{
+        var c=Robolectric.buildService(WispImeService.class).create();try{
+            WispImeService s=c.get();s.onCreateInputView();Editable text=connect(s,"");
+            String list="На завтра:\n1. Проверить pull request.\n2. Обновить README.\n3. Запустить unit tests.";
+            deliver(s,generation(s),list,"");assertEquals(list,text.toString());
         }finally{c.destroy();}
     }
     @Test public void selectedTextIsReplacedWithoutExtraSpace()throws Exception{

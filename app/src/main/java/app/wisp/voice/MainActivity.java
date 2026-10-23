@@ -119,6 +119,7 @@ public final class MainActivity extends Activity {
         language.setOnClickListener(v->{String current=settings.language();settings.setLanguage(current.equals("auto")?"ru":current.equals("ru")?"en":"auto");language.setText(languageLabel());});
         Button mode=Ui.button(this,modeLabel(),false);options.addView(mode,Ui.fill(this,48));Ui.gap(options,8);
         mode.setOnClickListener(v->{settings.setMode(switch(settings.mode()){case "clean"->"message";case "message"->"notes";case "notes"->"raw";default->"clean";});mode.setText(modeLabel());});
+        options.addView(Ui.text(this,"«Умный текст» исправляет оговорки и грамматику, убирает слова-паразиты и оформляет перечисления списком. Русский и English сохраняются без перевода. В режиме «Без ИИ» эта обработка отключена.",12,Ui.muted(this)));Ui.gap(options,8);
         Switch turbo=new Switch(this);turbo.setText("Быстрый Whisper Turbo");turbo.setTextColor(Ui.foreground(this));turbo.setTextSize(14);
         turbo.setChecked(settings.turbo());turbo.setPadding(0,Ui.dp(this,12),0,Ui.dp(this,12));options.addView(turbo,Ui.fill(this,-2));
         turbo.setOnCheckedChangeListener((b,on)->settings.setTurbo(on));
@@ -142,7 +143,7 @@ public final class MainActivity extends Activity {
         Ui.gap(page,12);page.addView(Ui.text(this,"WISP  /  "+updates.versionName()+"     •     СДЕЛАНО ДЛЯ ВАШЕГО ГОЛОСА",10,Ui.foreground(this)));
     }
     private String languageLabel(){return "Язык: "+switch(settings.language()){case "ru"->"русский";case "en"->"English";default->"русский + English (авто)";};}
-    private String modeLabel(){return "Обработка: "+switch(settings.mode()){case "message"->"письмо";case "notes"->"заметка";case "raw"->"без ИИ";default->"чистый текст";};}
+    private String modeLabel(){return "Обработка: "+switch(settings.mode()){case "message"->"сообщение";case "notes"->"список";case "raw"->"без ИИ";default->"умный текст";};}
     private void report(String text,boolean ok) { feedback.setText(text); feedback.setTextColor(Ui.foreground(this)); }
     private void refresh() {
         if(readiness==null)return;

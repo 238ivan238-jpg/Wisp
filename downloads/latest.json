@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 4,
-  "versionName": "1.0.3",
+  "versionCode": 5,
+  "versionName": "1.0.4",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.3.apk",
-  "sha256": "b48eb1e2795699fd90cae134f4d29ef4dff8151157ef8123208771ca88cbe2be",
-  "size": 5046706,
-  "notes": "Плавающий микрофон, автоматическая вставка текста, системная светлая и тёмная тема. Обновления теперь можно скачивать внутри Wisp."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.4.apk",
+  "sha256": "7d1bb9b8ea1a56bb5f55e8bdbbe587810e9d57180fd2984d224c0644712b299c",
+  "size": 5050650,
+  "notes": "Улучшена обработка диктовки: оговорки, грамматика и автоматические списки. Убрана служебная фраза из подсказки распознавания. Русский и English сохраняются без перевода; словарь учитывается при обработке."
 }

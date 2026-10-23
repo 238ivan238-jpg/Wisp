@@ -16,7 +16,7 @@ public class CleanupCompatibilityTest {
             assertEquals("openai/gpt-oss-20b",body.getString("model"));
             assertEquals("low",body.getString("reasoning_effort"));
             assertEquals(4096,body.getInt("max_completion_tokens"));assertFalse(body.has("max_tokens"));
-            assertEquals("Ну, завтра deploy.",body.getJSONArray("messages").getJSONObject(1).getString("content"));
+            assertEquals("Ну, завтра deploy.",new JSONObject(body.getJSONArray("messages").getJSONObject(1).getString("content")).getString("dictation"));
             return new GroqClient.Response(200,COMPLETE);
         });assertEquals("Завтра deploy.",c.clean("Ну, завтра deploy.","key"));
     }
@@ -29,8 +29,10 @@ public class CleanupCompatibilityTest {
                 return new GroqClient.Response(200,"{\"data\":[{\"id\":\"whisper-large-v3\"},{\"id\":\"llama-3.3-70b-versatile\"}]}");}
             assertEquals(3,call);JSONObject body=new JSONObject(new String(bytes,StandardCharsets.UTF_8));
             assertEquals("llama-3.3-70b-versatile",body.getString("model"));assertFalse(body.has("reasoning_effort"));
+            JSONObject data=new JSONObject(body.getJSONArray("messages").getJSONObject(1).getString("content"));
+            assertEquals("Ну, завтра deploy.",data.getString("dictation"));assertEquals("GitHub",data.getString("spelling_hints"));
             return new GroqClient.Response(200,COMPLETE);
-        });assertEquals("Завтра deploy.",c.clean("Ну, завтра deploy.","key"));assertEquals(3,calls.get());
+        });assertEquals("Завтра deploy.",c.clean("Ну, завтра deploy.","key","clean","GitHub"));assertEquals(3,calls.get());
     }
     @Test public void decommissionedModelWith400CanFallBack() throws Exception {
         AtomicInteger chats=new AtomicInteger();
