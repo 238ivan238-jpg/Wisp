@@ -1,0 +1,7 @@
+<resources>
+    <color name="wisp_background">#FFFFFF</color>
+    <color name="wisp_surface">#F3F3F3</color>
+    <color name="wisp_border">#DEDEDE</color>
+    <color name="wisp_foreground">#000000</color>
+    <color name="wisp_muted">#555555</color>
+</resources>

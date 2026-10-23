@@ -10,8 +10,11 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 final class Ui {
-    static final int BG = 0xff101a19, CARD = 0xff1b2927, BORDER = 0xff344640;
-    static final int MINT = 0xffb6f5cd, TEXT = 0xfff0f4ed, MUTED = 0xffa5b8b0, ERROR = 0xffffb4a8;
+    static int background(Context c){return c.getColor(R.color.wisp_background);}
+    static int surface(Context c){return c.getColor(R.color.wisp_surface);}
+    static int border(Context c){return c.getColor(R.color.wisp_border);}
+    static int foreground(Context c){return c.getColor(R.color.wisp_foreground);}
+    static int muted(Context c){return c.getColor(R.color.wisp_muted);}
     static int dp(Context c, float n) { return Math.round(n * c.getResources().getDisplayMetrics().density); }
     static GradientDrawable bg(int color, int radius) {
         GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius); return d;
@@ -32,10 +35,10 @@ final class Ui {
     static Button button(Context c, String value, boolean primary) {
         Button b = new Button(c); b.setText(value); b.setTextSize(14); b.setAllCaps(false);
         int[][] states=new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{}};
-        b.setTextColor(new ColorStateList(states,new int[]{MUTED,primary?BG:TEXT}));
+        b.setTextColor(new ColorStateList(states,new int[]{muted(c),primary?background(c):foreground(c)}));
         b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        GradientDrawable background=bg(primary?MINT:BORDER,dp(c,16));
-        background.setColor(new ColorStateList(states,new int[]{0xff273832,primary?MINT:BORDER}));b.setBackground(background);
+        GradientDrawable background=bg(primary?foreground(c):border(c),dp(c,16));
+        background.setColor(new ColorStateList(states,new int[]{surface(c),primary?foreground(c):border(c)}));b.setBackground(background);
         b.setPadding(dp(c, 12), dp(c, 6), dp(c, 12), dp(c, 6));
         b.setMinHeight(dp(c, 48)); b.setMinimumHeight(dp(c, 48)); b.setStateListAnimator(null); return b;
     }
@@ -43,7 +46,7 @@ final class Ui {
         android.view.View v = new android.view.View(l.getContext()); l.addView(v, new LinearLayout.LayoutParams(1, dp(l.getContext(), height)));
     }
     static LinearLayout card(Context c) {
-        LinearLayout l = column(c); int p=dp(c, 20); l.setPadding(p,p,p,p); l.setBackground(bg(CARD,dp(c,24))); return l;
+        LinearLayout l = column(c); int p=dp(c, 20); l.setPadding(p,p,p,p); l.setBackground(bg(surface(c),dp(c,24))); return l;
     }
     static LinearLayout.LayoutParams fill(Context c, int height) {
         return new LinearLayout.LayoutParams(-1, height < 0 ? height : dp(c,height));

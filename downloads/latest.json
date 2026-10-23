@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "packageName": "app.wisp.voice",
+  "versionCode": 4,
+  "versionName": "1.0.3",
+  "minSdk": 28,
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.3.apk",
+  "sha256": "b48eb1e2795699fd90cae134f4d29ef4dff8151157ef8123208771ca88cbe2be",
+  "size": 5046706,
+  "notes": "Плавающий микрофон, автоматическая вставка текста, системная светлая и тёмная тема. Обновления теперь можно скачивать внутри Wisp."
+}

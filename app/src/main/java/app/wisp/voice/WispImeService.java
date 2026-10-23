@@ -3,6 +3,11 @@ package app.wisp.voice;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.Color;
+import android.graphics.Rect;
+import android.graphics.Region;
+import android.graphics.drawable.ColorDrawable;
 import android.inputmethodservice.InputMethodService;
 import android.media.MediaRecorder;
 import android.os.Build;
@@ -12,7 +17,6 @@ import android.os.SystemClock;
 import android.view.*;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
-import android.view.inputmethod.InputMethodManager;
 import android.widget.*;
 import java.io.File;
 import java.util.Locale;
@@ -28,129 +32,118 @@ public final class WispImeService extends InputMethodService {
     private File audio;
     private Future<?> request;
     private GroqClient activeApi;
-    private long started;
+    private long started,touchDown;
     private int generation;
-    private boolean busy, sensitive, shifted, lettersShown, rawShown;
-    private String raw="",edited="",lastInserted="";
-    private TextView status,preview;
-    private Button mic,insert,language,mode,rawButton,lettersButton;
-    private LinearLayout letters;
-    private WaveformView waveform;
-    private boolean touchStartedRecording, suppressMicClick, suppressDeleteClick;
-    private long touchDown;
+    private boolean busy,sensitive,dragging,longPressed;
+    private float downX,downY,startX,startY;
+    private int safeTop,safeBottom,safeLeft,safeRight;
+    private FrameLayout root;
+    private TextView status;
+    private VoiceBubble mic;
     @Override public void onCreate(){
         super.onCreate();settings=new SecureSettings(this);
         File[] stale=getCacheDir().listFiles((dir,name)->name.startsWith("wisp-audio-")&&name.endsWith(".m4a"));
         if(stale!=null)for(File f:stale)f.delete();
     }
     @Override public boolean onEvaluateFullscreenMode(){return false;}
+    @Override public void onConfigureWindow(Window window,boolean fullscreen,boolean candidatesOnly){
+        window.setLayout(-1,-1);window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        window.setDimAmount(0);window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        window.setNavigationBarColor(Ui.background(this));
+        int flags=window.getDecorView().getSystemUiVisibility();
+        boolean dark=(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
+        window.getDecorView().setSystemUiVisibility(dark?flags&~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:flags|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+    }
     @Override public View onCreateInputView(){
-        LinearLayout root=Ui.column(this);root.setBackground(Ui.bg(Ui.BG,Ui.dp(this,24)));
-        int p=Ui.dp(this,12);root.setPadding(p,p,p,Ui.dp(this,8));
-        LinearLayout header=Ui.row(this);
-        TextView brand=Ui.bold(this,"wisp",22,Ui.MINT);header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
-        language=small("RU + EN");header.addView(language);
-        language.setOnClickListener(v->{if(active())return;String l=settings.language();settings.setLanguage(l.equals("auto")?"ru":l.equals("ru")?"en":"auto");labels();buildLetters();});
-        mode=small("Чистый");header.addView(mode);
-        mode.setOnClickListener(v->{if(active())return;String m=settings.mode();settings.setMode(switch(m){case "clean"->"message";case "message"->"notes";case "notes"->"raw";default->"clean";});labels();});
-        Button setup=small("⚙");setup.setContentDescription("Настройки Wisp");header.addView(setup);setup.setOnClickListener(v->openSettings());root.addView(header);
-        Ui.gap(root,8);
-        status=Ui.text(this,"Готов к диктовке",12,Ui.MINT);root.addView(status);
-        Ui.gap(root,6);
-        ScrollView previewScroll=new ScrollView(this);previewScroll.setFillViewport(true);
-        preview=Ui.text(this,"Нажмите микрофон и говорите.\nИли удерживайте его как рацию.",16,Ui.TEXT);
-        preview.setPadding(Ui.dp(this,12),Ui.dp(this,10),Ui.dp(this,12),Ui.dp(this,10));
-        preview.setBackground(Ui.bg(Ui.CARD,Ui.dp(this,16)));
-        preview.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
-        previewScroll.addView(preview);root.addView(previewScroll,Ui.fill(this,82));
-        waveform=new WaveformView(this);root.addView(waveform,Ui.fill(this,28));
-        LinearLayout voice=Ui.row(this);
-        Button cancel=Ui.button(this,"Отмена",false);voice.addView(cancel,new LinearLayout.LayoutParams(0,Ui.dp(this,54),1));
-        cancel.setOnClickListener(v->{cancelSession();resetUi();});
-        View gap=new View(this);voice.addView(gap,new LinearLayout.LayoutParams(Ui.dp(this,8),1));
-        mic=Ui.button(this,"● Запись",true);mic.setContentDescription("Записать голос. Нажмите для начала и остановки или удерживайте.");
-        voice.addView(mic,new LinearLayout.LayoutParams(0,Ui.dp(this,60),1.4f));
+        root=new FrameLayout(this);root.setBackgroundColor(Color.TRANSPARENT);
+        root.setMinimumHeight(getResources().getDisplayMetrics().heightPixels);
+        root.setClipChildren(false);root.setClipToPadding(false);
+        safeBottom=Ui.dp(this,32);
+        mic=new VoiceBubble(this);root.addView(mic,new FrameLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,64)));
+        status=Ui.text(this,"",13,Ui.foreground(this));status.setMaxLines(3);status.setGravity(Gravity.CENTER);
+        status.setPadding(Ui.dp(this,12),Ui.dp(this,8),Ui.dp(this,12),Ui.dp(this,8));
+        status.setBackground(Ui.bg(Ui.surface(this),Ui.dp(this,14)));
+        FrameLayout.LayoutParams label=new FrameLayout.LayoutParams(Ui.dp(this,250),-2);root.addView(status,label);
+        status.setVisibility(View.GONE);status.setOnClickListener(v->openSettings());
+        root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->positionViews());
+        root.setOnApplyWindowInsetsListener((v,insets)->{
+            if(Build.VERSION.SDK_INT>=30){
+                android.graphics.Insets system=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
+                safeTop=system.top;safeBottom=Math.max(Ui.dp(this,24),system.bottom);safeLeft=system.left;safeRight=system.right;
+            }else{safeTop=insets.getSystemWindowInsetTop();safeBottom=Math.max(Ui.dp(this,24),insets.getSystemWindowInsetBottom());safeLeft=insets.getSystemWindowInsetLeft();safeRight=insets.getSystemWindowInsetRight();}
+            positionViews();return insets;
+        });
+        mic.setOnClickListener(v->{if(recorder!=null)stopAndProcess();else startRecording();});
         mic.setOnTouchListener((v,e)->{
             if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
-                touchDown=SystemClock.elapsedRealtime();boolean startNew=recorder==null&&!busy;
-                if(startNew)startRecording();touchStartedRecording=startNew&&recorder!=null;v.setPressed(true);return true;
-            }
-            else if(e.getActionMasked()==MotionEvent.ACTION_UP){
-                v.setPressed(false);
-                if(!touchStartedRecording||SystemClock.elapsedRealtime()-touchDown>=350)stopAndProcess();
-                touchStartedRecording=false;suppressMicClick=true;v.performClick();return true;
-            } else if(e.getActionMasked()==MotionEvent.ACTION_CANCEL){v.setPressed(false);if(touchStartedRecording){cancelSession();resetUi();}return true;}
+                downX=e.getRawX();downY=e.getRawY();startX=mic.getX();startY=mic.getY();dragging=false;longPressed=false;
+                handler.postDelayed(openSettingsHold,ViewConfiguration.getLongPressTimeout());return true;
+            }else if(e.getActionMasked()==MotionEvent.ACTION_MOVE){
+                float dx=e.getRawX()-downX,dy=e.getRawY()-downY;
+                if(Math.hypot(dx,dy)>ViewConfiguration.get(this).getScaledTouchSlop()){dragging=true;handler.removeCallbacks(openSettingsHold);}
+                if(dragging){moveBubble(startX+dx,startY+dy);positionLabel();root.requestLayout();}return true;
+            }else if(e.getActionMasked()==MotionEvent.ACTION_UP){
+                handler.removeCallbacks(openSettingsHold);
+                if(dragging)savePosition();else if(!longPressed)v.performClick();return true;
+            }else if(e.getActionMasked()==MotionEvent.ACTION_CANCEL){handler.removeCallbacks(openSettingsHold);return true;}
             return true;
         });
-        // A short tap starts recording on ACTION_DOWN and leaves it running.
-        mic.setOnClickListener(v->{
-            if(suppressMicClick){suppressMicClick=false;return;}
-            if(recorder!=null)stopAndProcess();else startRecording();
-        });
-        View gap2=new View(this);voice.addView(gap2,new LinearLayout.LayoutParams(Ui.dp(this,8),1));
-        insert=Ui.button(this,"Вставить",true);voice.addView(insert,new LinearLayout.LayoutParams(0,Ui.dp(this,54),1));
-        insert.setOnClickListener(v->insertPreview());root.addView(voice);
-        LinearLayout transcript=Ui.row(this);rawButton=Ui.button(this,"Показать исходный",false);rawButton.setTextSize(12);
-        rawButton.setOnClickListener(v->{rawShown=!rawShown;showPreview();});transcript.addView(rawButton,new LinearLayout.LayoutParams(0,Ui.dp(this,40),1));
-        lettersButton=Ui.button(this,"ABC",false);lettersButton.setContentDescription("Открыть или скрыть буквенную клавиатуру");
-        lettersButton.setOnClickListener(v->{lettersShown=!lettersShown;buildLetters();});transcript.addView(lettersButton,new LinearLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,40)));
-        Ui.gap(root,8);root.addView(transcript);Ui.gap(root,8);
-        letters=Ui.column(this);root.addView(letters);buildLetters();
-        LinearLayout bottom=Ui.row(this);
-        Button globe=bottomKey(bottom,"◎",1,()->{cancelSession();if(!switchToPreviousInputMethod())getSystemService(InputMethodManager.class).showInputMethodPicker();});
-        globe.setContentDescription("Вернуться к предыдущей клавиатуре. Удерживайте для выбора клавиатуры.");
-        globe.setOnLongClickListener(v->{getSystemService(InputMethodManager.class).showInputMethodPicker();return true;});
-        Button undo=bottomKey(bottom,"↶",1,this::undo);undo.setContentDescription("Отменить последнюю вставку Wisp");
-        bottomKey(bottom,"Пробел",2.4f,()->type(" "));
-        Button delete=bottomKey(bottom,"⌫",1,this::delete);delete.setContentDescription("Удалить символ или выделение");
-        final Runnable repeat=new Runnable(){public void run(){delete();handler.postDelayed(this,65);}};
-        delete.setOnTouchListener((v,e)->{
-            if(e.getActionMasked()==MotionEvent.ACTION_DOWN){delete();handler.postDelayed(repeat,400);return true;}
-            if(e.getActionMasked()==MotionEvent.ACTION_UP||e.getActionMasked()==MotionEvent.ACTION_CANCEL){handler.removeCallbacks(repeat);if(e.getActionMasked()==MotionEvent.ACTION_UP){suppressDeleteClick=true;v.performClick();}return true;}
-            return false;
-        });
-        // Touch repeat already deletes on down; performClick preserves accessibility without a second deletion.
-        delete.setOnClickListener(v->{if(suppressDeleteClick){suppressDeleteClick=false;return;}delete();});
-        Button enter=bottomKey(bottom,"↵",1,this::enter);enter.setContentDescription("Ввод или действие поля");root.addView(bottom);
-        labels();resetUi();return root;
+        if(getWindow()!=null&&getWindow().getWindow()!=null)onConfigureWindow(getWindow().getWindow(),false,false);
+        resetUi();return root;
     }
-    private Button small(String text){Button b=Ui.button(this,text,false);b.setTextSize(12);b.setMinWidth(0);b.setMinimumWidth(0);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,Ui.dp(this,42));p.leftMargin=Ui.dp(this,5);b.setLayoutParams(p);return b;}
-    private Button bottomKey(LinearLayout row,String text,float weight,Runnable action){
-        Button b=Ui.button(this,text,false);b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,0,0,0);
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(this,48),weight);p.setMargins(Ui.dp(this,2),0,Ui.dp(this,2),0);row.addView(b,p);
-        b.setOnClickListener(v->action.run());return b;
+    private final Runnable openSettingsHold=()->{longPressed=true;openSettings();};
+    private void openSettings(){cancelSession();startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
+    private float left(){return safeLeft+Ui.dp(this,10);}
+    private float top(){return safeTop+Ui.dp(this,10);}
+    private float right(){return Math.max(left(),root.getWidth()-safeRight-Ui.dp(this,74));}
+    private float bottom(){return Math.max(top(),root.getHeight()-safeBottom-Ui.dp(this,100));}
+    private void moveBubble(float x,float y){mic.setX(Math.max(left(),Math.min(right(),x)));mic.setY(Math.max(top(),Math.min(bottom(),y)));}
+    private void positionViews(){
+        if(root==null||root.getWidth()==0||mic==null)return;
+        if(!dragging){
+            android.content.SharedPreferences p=getSharedPreferences("wisp_bubble",MODE_PRIVATE);
+            float x=p.getFloat("x",1),y=p.getFloat("y",1);moveBubble(left()+x*(right()-left()),top()+y*(bottom()-top()));
+        }
+        positionLabel();
     }
-    private void labels(){
-        if(language==null)return;
-        language.setText(switch(settings.language()){case "ru"->"RU";case "en"->"EN";default->"RU + EN";});
-        mode.setText(switch(settings.mode()){case "message"->"Письмо";case "notes"->"Заметка";case "raw"->"Без ИИ";default->"Чистый";});
+    private void positionLabel(){
+        if(status==null||root==null)return;float x=mic.getX()+mic.getWidth()/2f-status.getMeasuredWidth()/2f;
+        status.setX(Math.max(safeLeft,Math.min(root.getWidth()-safeRight-status.getMeasuredWidth(),x)));
+        float above=mic.getY()-status.getMeasuredHeight()-Ui.dp(this,10);
+        status.setY(above>=top()?above:mic.getY()+mic.getHeight()+Ui.dp(this,8));
     }
-    private void buildLetters(){
-        if(letters==null)return;letters.removeAllViews();letters.setVisibility(lettersShown?View.VISIBLE:View.GONE);if(!lettersShown)return;
-        String[] rows="en".equals(settings.language())?new String[]{"1234567890","qwertyuiop","asdfghjkl","zxcvbnm"}:new String[]{"1234567890","йцукенгшщзхъ","фывапролджэ","ячсмитьбюё"};
-        for(String text:rows){LinearLayout row=Ui.row(this);for(int i=0;i<text.length();i++){
-            String c=String.valueOf(text.charAt(i));String label=shifted?c.toUpperCase(Locale.ROOT):c;
-            Button b=bottomKey(row,label,1,()->type(label));b.setTextSize(15);b.setBackground(Ui.bg(Ui.CARD,Ui.dp(this,9)));
-        } letters.addView(row);Ui.gap(letters,4);}
-        LinearLayout punctuation=Ui.row(this);bottomKey(punctuation,"⇧",1,()->{shifted=!shifted;buildLetters();});
-        for(String c:new String[]{",",".","?","!","-","@"})bottomKey(punctuation,c,1,()->type(c));letters.addView(punctuation);Ui.gap(letters,6);
+    private void savePosition(){
+        float x=right()>left()?(mic.getX()-left())/(right()-left()):0;
+        float y=bottom()>top()?(mic.getY()-top())/(bottom()-top()):0;
+        getSharedPreferences("wisp_bubble",MODE_PRIVATE).edit().putFloat("x",x).putFloat("y",y).apply();dragging=false;
     }
-    @Override public void onStartInput(EditorInfo info,boolean restarting){
-        super.onStartInput(info,restarting);cancelSession();sensitive=info==null||DictationText.sensitive(info.inputType);lastInserted="";resetUi();
+    private void setStatus(String text){
+        if(status==null)return;status.setText(text);status.setVisibility(text.isEmpty()?View.GONE:View.VISIBLE);
+        if(root!=null)root.post(this::positionLabel);
     }
-    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);labels();resetUi();}
-    private boolean active(){return recorder!=null||busy;}
+    @Override public void onComputeInsets(Insets out){
+        int height=getWindow()!=null&&getWindow().getWindow()!=null?getWindow().getWindow().getDecorView().getHeight():0;
+        if(height<=0&&root!=null)height=root.getHeight();
+        out.contentTopInsets=height;out.visibleTopInsets=height;out.touchableInsets=Insets.TOUCHABLE_INSETS_REGION;out.touchableRegion.setEmpty();
+        addTouchable(out,mic);addTouchable(out,status);
+    }
+    private void addTouchable(Insets out,View view){
+        if(view==null||view.getVisibility()!=View.VISIBLE||view.getWidth()==0)return;
+        int[] xy=new int[2];root.getLocationInWindow(xy);int x=xy[0]+Math.round(view.getX()),y=xy[1]+Math.round(view.getY());
+        out.touchableRegion.op(new Rect(x,y,x+view.getWidth(),y+view.getHeight()),Region.Op.UNION);
+    }
+    @Override public void onStartInput(EditorInfo info,boolean restarting){super.onStartInput(info,restarting);cancelSession();sensitive=info==null||DictationText.sensitive(info.inputType);resetUi();}
+    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);resetUi();}
     private void resetUi(){
-        if(status==null)return;status.setText(sensitive?"Защищённое поле · диктовка отключена":"Готов · до 2 минут на запись");
-        status.setTextColor(Ui.MINT);preview.setText(sensitive?"Для пароля используйте обычную клавиатуру. Кнопка ◎ вернёт вас обратно.":"Нажмите микрофон и говорите.\nИли удерживайте его как рацию.");
-        mic.setEnabled(!sensitive);mic.setText("● Запись");mic.setBackground(Ui.bg(Ui.MINT,Ui.dp(this,16)));
-        insert.setEnabled(false);rawButton.setVisibility(View.GONE);waveform.clear();
+        if(status==null)return;setStatus(sensitive?"В полях паролей диктовка отключена":"");
+        mic.setEnabled(!sensitive);mic.setState(VoiceBubble.IDLE);mic.setProgress(0);
     }
     @SuppressWarnings("deprecation")
     private void startRecording(){
-        if(active()||sensitive)return;
-        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){error("Разрешите микрофон в приложении Wisp (⚙).");return;}
-        if(!settings.hasKey()){error("Сначала сохраните API-ключ Groq в приложении Wisp (⚙).");return;}
+        if(recorder!=null||busy||sensitive)return;
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){error("Удерживайте микрофон и разрешите запись в настройках.");return;}
+        if(!settings.hasKey()){error("Удерживайте микрофон и сохраните API-ключ Groq в настройках.");return;}
         cancelSession();
         try{
             audio=File.createTempFile("wisp-audio-",".m4a",getCacheDir());
@@ -161,77 +154,54 @@ public final class WispImeService extends InputMethodService {
             recorder.setOnInfoListener((r,what,extra)->{if(what==MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED)stopAndProcess();});
             recorder.setOnErrorListener((r,what,extra)->{cancelSession();error("Микрофон прервал запись. Попробуйте ещё раз.");});
             recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();
-            mic.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);mic.setText("■ Стоп");
-            mic.setBackground(Ui.bg(Ui.ERROR,Ui.dp(this,16)));insert.setEnabled(false);rawButton.setVisibility(View.GONE);
-            preview.setText("Слушаю…\nНажмите ещё раз, чтобы закончить.");handler.post(tick);
+            mic.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);mic.setState(VoiceBubble.RECORDING);handler.post(tick);
         }catch(Exception e){cancelSession();error("Не удалось включить микрофон. Проверьте разрешение и другие приложения записи.");}
     }
     private final Runnable tick=new Runnable(){public void run(){
         if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;
-        status.setText(String.format(Locale.ROOT,"● Запись  %02d:%02d / 02:00",seconds/60,seconds%60));
-        try{waveform.add((float)Math.min(1,Math.log1p(recorder.getMaxAmplitude())/11));}catch(RuntimeException ignored){}
+        setStatus(String.format(Locale.ROOT,"%02d:%02d / 02:00",seconds/60,seconds%60));mic.setProgress(seconds/120f);
         handler.postDelayed(this,90);
     }};
     private void stopAndProcess(){
         if(recorder==null)return;long duration=SystemClock.elapsedRealtime()-started;
         MediaRecorder r=recorder;recorder=null;handler.removeCallbacks(tick);
         try{r.stop();}catch(RuntimeException e){r.release();cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
-        r.release();waveform.clear();
+        r.release();
         if(duration<650){cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
-        busy=true;mic.setEnabled(false);mic.setText("···");status.setText("Распознаю через Whisper…");preview.setText("Аудио отправляется в Groq. Можно отменить.");
-        final int token=generation;final File recorded=audio;
-        final String lang=settings.language(),modeValue=settings.mode(),vocabulary=settings.vocabulary();final boolean turbo=settings.turbo();
-        final GroqClient api=new GroqClient();activeApi=api;
+        busy=true;mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);setStatus("Распознаю…");
+        final int token=generation;final File recorded=audio;final GroqClient api=new GroqClient();activeApi=api;
+        final String lang=settings.language(),mode=settings.mode(),vocabulary=settings.vocabulary();final boolean turbo=settings.turbo();
         request=worker.submit(()->{
             try{
-                DictationPipeline.Result result=DictationPipeline.run(api,recorded,settings.readKey(),lang,turbo,vocabulary,modeValue,
-                    original->post(token,()->{status.setText("ИИ очищает текст…");preview.setText(original);}));
-                String original=result.original(),finalText=result.text(),notice=result.warning();
-                post(token,()->{busy=false;raw=original;edited=finalText;rawShown=false;showPreview();
-                    status.setText(notice.isEmpty()?"Готово · проверьте текст перед вставкой":notice);status.setTextColor(notice.isEmpty()?Ui.MINT:Ui.ERROR);
-                    mic.setEnabled(!sensitive);mic.setText("● Ещё раз");mic.setBackground(Ui.bg(Ui.MINT,Ui.dp(this,16)));insert.setEnabled(true);
-                    rawButton.setVisibility(raw.equals(edited)?View.GONE:View.VISIBLE);
-                });
+                DictationPipeline.Result result=DictationPipeline.run(api,recorded,settings.readKey(),lang,turbo,vocabulary,mode,
+                    original->post(token,()->setStatus("Обрабатываю текст…")));
+                post(token,()->deliver(token,result));
             }catch(Exception e){post(token,()->{busy=false;error(GroqClient.friendlyError(e));});}
             finally{recorded.delete();}
         });
     }
-    private void post(int token,Runnable action){handler.post(()->{if(token==generation)action.run();});}
-    private void showPreview(){preview.setText(rawShown?raw:edited);rawButton.setText(rawShown?"Показать очищенный":"Показать исходный");}
-    private void error(String message){if(status==null)return;status.setText("Не получилось");status.setTextColor(Ui.ERROR);preview.setText(message);mic.setEnabled(!sensitive);mic.setText("● Запись");mic.setBackground(Ui.bg(Ui.MINT,Ui.dp(this,16)));insert.setEnabled(false);}
-    private void insertPreview(){
-        InputConnection ic=getCurrentInputConnection();String value=rawShown?raw:edited;
-        if(ic==null||sensitive||value.isBlank())return;
+    private void deliver(int token,DictationPipeline.Result result){
+        if(token!=generation||sensitive)return;busy=false;resetUi();
+        InputConnection ic=getCurrentInputConnection();
+        if(ic==null){error("Поле ввода закрыто. Откройте его и повторите диктовку.");return;}
         CharSequence selected=ic.getSelectedText(0);
-        String insertion=DictationText.insertion(value,ic.getTextBeforeCursor(2,0),selected!=null&&selected.length()>0);
-        if(ic.commitText(insertion,1)){lastInserted=selected!=null&&selected.length()>0?"":insertion;raw="";edited="";insert.setEnabled(false);rawButton.setVisibility(View.GONE);status.setText("Вставлено ✓");}
-        else error("Поле не приняло текст. Откройте его заново и повторите запись.");
+        String insertion=DictationText.insertion(result.text(),ic.getTextBeforeCursor(2,0),selected!=null&&selected.length()>0);
+        if(insertion.isEmpty()||!ic.commitText(insertion,1)){error("Поле не приняло текст. Откройте его и повторите диктовку.");return;}
+        if(!result.warning().isEmpty())setStatus(result.warning().replace("Сохранён исходный текст.","Вставлен исходный текст."));
     }
-    private void undo(){InputConnection ic=getCurrentInputConnection();if(ic==null||lastInserted.isEmpty())return;
-        CharSequence selection=ic.getSelectedText(0),before=ic.getTextBeforeCursor(lastInserted.length(),0);
-        if((selection==null||selection.length()==0)&&lastInserted.contentEquals(before==null?"":before)){ic.deleteSurroundingText(lastInserted.length(),0);status.setText("Последняя вставка отменена");}
-        else status.setText("Курсор или текст изменён — отмена недоступна");lastInserted="";
-    }
-    private void type(String text){InputConnection ic=getCurrentInputConnection();if(ic!=null){ic.commitText(text,1);lastInserted="";}}
-    private void delete(){InputConnection ic=getCurrentInputConnection();if(ic==null)return;lastInserted="";
-        CharSequence selected=ic.getSelectedText(0);if(selected!=null&&selected.length()>0)ic.commitText("",1);else ic.deleteSurroundingTextInCodePoints(1,0);
-    }
-    private void enter(){InputConnection ic=getCurrentInputConnection();EditorInfo info=getCurrentInputEditorInfo();if(ic==null||info==null)return;lastInserted="";
-        int action=info.imeOptions&EditorInfo.IME_MASK_ACTION;
-        if((info.imeOptions&EditorInfo.IME_FLAG_NO_ENTER_ACTION)==0&&action!=EditorInfo.IME_ACTION_NONE&&action!=EditorInfo.IME_ACTION_UNSPECIFIED)ic.performEditorAction(action);
-        else ic.commitText("\n",1);
-    }
-    private void openSettings(){cancelSession();startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
+    private void post(int token,Runnable action){handler.post(()->{if(token==generation)action.run();});}
+    private void error(String message){if(status==null)return;resetUi();setStatus(message);}
     private void cancelSession(){
         generation++;handler.removeCallbacksAndMessages(null);
         if(recorder!=null){try{recorder.stop();}catch(RuntimeException ignored){}recorder.release();recorder=null;}
         if(request!=null){request.cancel(true);request=null;}
         if(activeApi!=null){activeApi.cancel();activeApi=null;}
         if(audio!=null){audio.delete();audio=null;}
-        busy=false;raw="";edited="";rawShown=false;touchStartedRecording=false;
+        busy=false;
     }
-    @Override public void onFinishInputView(boolean finishingInput){cancelSession();lastInserted="";resetUi();super.onFinishInputView(finishingInput);}
-    @Override public void onFinishInput(){cancelSession();lastInserted="";super.onFinishInput();}
-    @Override public void onWindowHidden(){cancelSession();lastInserted="";resetUi();super.onWindowHidden();}
+    @Override public void onConfigurationChanged(Configuration config){cancelSession();super.onConfigurationChanged(config);if(isInputViewShown())setInputView(onCreateInputView());}
+    @Override public void onFinishInputView(boolean finishingInput){cancelSession();resetUi();super.onFinishInputView(finishingInput);}
+    @Override public void onFinishInput(){cancelSession();resetUi();super.onFinishInput();}
+    @Override public void onWindowHidden(){cancelSession();resetUi();super.onWindowHidden();}
     @Override public void onDestroy(){cancelSession();worker.shutdownNow();super.onDestroy();}
 }
