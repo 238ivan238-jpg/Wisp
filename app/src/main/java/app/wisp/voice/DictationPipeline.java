@@ -5,7 +5,9 @@ import java.io.InterruptedIOException;
 import java.util.function.Consumer;
 
 final class DictationPipeline {
-    record Result(String original,String text,String warning) {}
+    record Result(String original,String text,String warning,String errorCategory) {
+        Result(String original,String text,String warning){this(original,text,warning,"");}
+    }
     static Result run(GroqClient api,File audio,String key,String language,boolean turbo,String vocabulary,
                       String mode,Consumer<String> recognized) throws Exception {
         String original=api.transcribe(audio,key,language,turbo,vocabulary);
@@ -13,11 +15,12 @@ final class DictationPipeline {
         recognized.accept(original);
         if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();
         try {
-            String text=api.clean(original,key,vocabulary);
+            String text="translate".equals(mode)?api.translate(original,key,vocabulary):api.clean(original,key,vocabulary);
             return new Result(original,text,"");
         } catch(Exception e) {
             if(Thread.currentThread().isInterrupted()||e instanceof InterruptedIOException && !(e instanceof java.net.SocketTimeoutException))throw e;
-            return new Result(original,original,"Очистка не удалась. Сохранён исходный текст. "+GroqClient.friendlyError(e));
+            String task="translate".equals(mode)?"Перевод не удался.":"Очистка не удалась.";
+            return new Result(original,original,task+" Сохранён исходный текст. "+GroqClient.friendlyError(e),GroqClient.failureCategory(e));
         }
     }
 }

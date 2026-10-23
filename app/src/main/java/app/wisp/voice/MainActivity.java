@@ -68,7 +68,7 @@ public final class MainActivity extends Activity {
         api.addView(Ui.bold(this,"02   Подключите Groq",18,Ui.foreground(this))); Ui.gap(api,8);
         api.addView(Ui.text(this,"Своего сервера и подписки Wisp нет. Распознавание и очистка работают через ваш аккаунт Groq; действуют его тарифы и лимиты.",13,Ui.muted(this)));
         Ui.gap(api,6);
-        api.addView(Ui.text(this,"«Проверить» проверяет список моделей и очистку короткой тестовой фразы. Аудио не записывается.",12,Ui.muted(this)));
+        api.addView(Ui.text(this,"«Проверить» проверяет список моделей и ответ на короткую тестовую фразу с выбранной обработкой или переводом. Аудио не записывается.",12,Ui.muted(this)));
         Ui.gap(api,12);
         Button getKey=Ui.button(this,"Создать ключ на console.groq.com ↗",false); api.addView(getKey,Ui.fill(this,-2));
         getKey.setOnClickListener(v->{
@@ -95,14 +95,16 @@ public final class MainActivity extends Activity {
         });
         check.setOnClickListener(v->{
             String entered=ApiKey.normalize(keyField.getText().toString());
+            boolean translation="translate".equals(settings.mode());
             check.setEnabled(false); report("Проверяем доступ к Groq…",true);
             worker.submit(()->{
                 String message; boolean ok;
                 try {
                     String key=entered.isEmpty()?settings.readKey():entered;
-                    GroqClient client=new GroqClient();client.checkKey(key);client.clean("Проверка подключения.",key);
-                    message=entered.isEmpty()?"Сохранённый ключ работает, Whisper доступен. ИИ-очистка тестовой фразы прошла успешно."
-                        :"Ключ и ИИ-очистка работают. Нажмите «Сохранить», чтобы использовать ключ для диктовки."; ok=true;
+                    GroqClient client=new GroqClient();client.checkKey(key);
+                    if(translation)client.translate("Проверка подключения.",key,"");else client.clean("Проверка подключения.",key);
+                    message=entered.isEmpty()?"Сохранённый ключ работает, Whisper доступен. Текстовая модель ответила на тестовую фразу."
+                        :"Ключ работает, текстовая модель ответила. Нажмите «Сохранить», чтобы использовать ключ для диктовки."; ok=true;
                 } catch(Exception e) { message=GroqClient.friendlyError(e); ok=false; }
                 String result=message; boolean success=ok;
                 runOnUiThread(()->{ if(!isDestroyed()) { check.setEnabled(true); report(result,success); } });
@@ -119,8 +121,12 @@ public final class MainActivity extends Activity {
         language.setOnClickListener(v->{String current=settings.language();settings.setLanguage(current.equals("auto")?"ru":current.equals("ru")?"en":"auto");language.setText(languageLabel());});
         Switch cleanup=new Switch(this);cleanup.setText("Чистый текст");cleanup.setTextColor(Ui.foreground(this));cleanup.setTextSize(14);
         cleanup.setChecked(!"raw".equals(settings.mode()));cleanup.setPadding(0,Ui.dp(this,12),0,Ui.dp(this,12));options.addView(cleanup,Ui.fill(this,-2));
-        cleanup.setOnCheckedChangeListener((button,on)->settings.setMode(on?"clean":"raw"));
         options.addView(Ui.text(this,"Исправляет оговорки и грамматику, убирает слова-паразиты и случайные повторы. Знаки препинания и абзацы передают смысл фразы; перечисления оформляются списком автоматически. Русский и English сохраняются без перевода. Если выключить — только расшифровка речи.",12,Ui.muted(this)));Ui.gap(options,8);
+        Switch translate=new Switch(this);translate.setText("Переводить на английский");translate.setTextColor(Ui.foreground(this));translate.setTextSize(14);
+        translate.setChecked("translate".equals(settings.mode()));translate.setPadding(0,Ui.dp(this,12),0,Ui.dp(this,12));options.addView(translate,Ui.fill(this,-2));
+        cleanup.setOnCheckedChangeListener((button,on)->{if(!on)translate.setChecked(false);settings.setMode(on?(translate.isChecked()?"translate":"clean"):"raw");});
+        translate.setOnCheckedChangeListener((button,on)->{if(on)cleanup.setChecked(true);settings.setMode(on?"translate":cleanup.isChecked()?"clean":"raw");});
+        options.addView(Ui.text(this,"Говорите по-русски или вперемешку — в поле вставится отредактированный английский перевод. Смысл, имена и технические термины сохраняются. Включение перевода включает обработку текста.",12,Ui.muted(this)));Ui.gap(options,8);
         Switch turbo=new Switch(this);turbo.setText("Быстрый Whisper Turbo");turbo.setTextColor(Ui.foreground(this));turbo.setTextSize(14);
         turbo.setChecked(settings.turbo());turbo.setPadding(0,Ui.dp(this,12),0,Ui.dp(this,12));options.addView(turbo,Ui.fill(this,-2));
         turbo.setOnCheckedChangeListener((b,on)->settings.setTurbo(on));
@@ -133,6 +139,9 @@ public final class MainActivity extends Activity {
         Button vocabSave=Ui.button(this,"Сохранить словарь",false);Ui.gap(options,8);options.addView(vocabSave,Ui.fill(this,48));
         vocabSave.setOnClickListener(v->{settings.setVocabulary(vocab.getText().toString());Toast.makeText(this,"Словарь сохранён",Toast.LENGTH_SHORT).show();});
         Ui.gap(page,16);
+        LinearLayout usage=Ui.card(this);page.addView(usage,Ui.fill(this,-2));usage.addView(Ui.bold(this,"Статистика использования",18,Ui.foreground(this)));Ui.gap(usage,8);
+        usage.addView(Ui.text(this,"Слова, время, диктовки по дням, графики, удалённые слова-паразиты и причины сбоев. Только локальные счётчики — без истории текстов и аудио.",13,Ui.muted(this)));Ui.gap(usage,12);
+        Button statistics=Ui.button(this,"Открыть статистику",false);usage.addView(statistics,Ui.fill(this,48));statistics.setOnClickListener(v->startActivity(new Intent(this,StatsActivity.class)));Ui.gap(page,16);
         LinearLayout test=Ui.card(this);page.addView(test,Ui.fill(this,-2));
         test.addView(Ui.bold(this,"Попробуйте прямо здесь",18,Ui.foreground(this)));Ui.gap(test,8);
         test.addView(Ui.text(this,"Коснитесь поля и выберите Wisp: появится плавающий микрофон. Нажмите для начала и остановки записи — текст вставится сам. Удерживайте значок для настроек; перетаскивайте для перемещения.",13,Ui.muted(this)));
@@ -140,7 +149,7 @@ public final class MainActivity extends Activity {
         sandbox.setMinLines(3);sandbox.setGravity(android.view.Gravity.TOP);sandbox.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         sandbox.setSaveEnabled(false);test.addView(sandbox,Ui.fill(this,-2));
         Ui.gap(page,20);
-        page.addView(Ui.text(this,"Только по вашему нажатию: аудио → Groq Whisper, текст → Groq для очистки. Записи удаляются после обработки или отмены. Политика хранения Groq действует отдельно. В полях паролей микрофон отключён.",12,Ui.muted(this)));
+        page.addView(Ui.text(this,"Только по вашему нажатию: аудио → Groq Whisper, текст → Groq для очистки или выбранного перевода. Записи удаляются после обработки или отмены. Политика хранения Groq действует отдельно. В полях паролей микрофон отключён.",12,Ui.muted(this)));
         Ui.gap(page,12);page.addView(Ui.text(this,"WISP  /  "+updates.versionName()+"     •     СДЕЛАНО ДЛЯ ВАШЕГО ГОЛОСА",10,Ui.foreground(this)));
     }
     private String languageLabel(){return "Язык: "+switch(settings.language()){case "ru"->"русский";case "en"->"English";default->"русский + English (авто)";};}

@@ -44,8 +44,8 @@ final class SecureSettings {
     void setLanguage(String v) { prefs.edit().putString("language",v).apply(); }
     // Former message/notes modes now use the same automatic editor. Preserve an
     // explicitly disabled editor when upgrading from an older release.
-    String mode() { return "raw".equals(prefs.getString("mode","clean"))?"raw":"clean"; }
-    void setMode(String v) { prefs.edit().putString("mode","raw".equals(v)?"raw":"clean").apply(); }
+    String mode() { String value=prefs.getString("mode","clean");return "raw".equals(value)||"translate".equals(value)?value:"clean"; }
+    void setMode(String v) { prefs.edit().putString("mode","raw".equals(v)||"translate".equals(v)?v:"clean").apply(); }
     String vocabulary() { return prefs.getString("vocab", ""); }
     void setVocabulary(String v) { prefs.edit().putString("vocab",v.trim()).apply(); }
     boolean turbo() { return prefs.getBoolean("turbo",false); }

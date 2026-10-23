@@ -80,6 +80,27 @@ public class KeyboardTest {
             assertFalse(((android.widget.Switch)find(a.get().getWindow().getDecorView(),"Чистый текст")).isChecked());
         }
     }
+    @Test public void translationToggleEnablesProcessingAndSurvivesReopeningSettings(){
+        var context=RuntimeEnvironment.getApplication();context.getSharedPreferences("wisp_private",0).edit().putString("mode","raw").commit();
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            View root=a.get().getWindow().getDecorView();find(root,"Переводить на английский").performClick();
+            assertTrue(((android.widget.Switch)find(root,"Чистый текст")).isChecked());assertEquals("translate",new SecureSettings(context).mode());
+        }
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            View root=a.get().getWindow().getDecorView();assertTrue(((android.widget.Switch)find(root,"Переводить на английский")).isChecked());
+            find(root,"Чистый текст").performClick();assertEquals("raw",new SecureSettings(context).mode());assertFalse(((android.widget.Switch)find(root,"Переводить на английский")).isChecked());
+        }
+    }
+    @Test public void failedOrStaleInsertionDoesNotCountWordsButSuccessfulInsertionDoes()throws Exception{
+        var c=Robolectric.buildService(WispImeService.class).create();try{
+            WispImeService s=c.get();s.onCreateInputView();connect(s,"");int old=generation(s);connect(s,"");
+            UsageStats stats=new UsageStats(s);deliver(s,old,"stale private words","");assertEquals(0,stats.snapshot().words());
+            ReflectionHelpers.setField(s,"mStartedInputConnection",new BaseInputConnection(new View(s),true){@Override public boolean commitText(CharSequence value,int cursor){return false;}});
+            deliver(s,generation(s),"Rejected words","");assertEquals(0,stats.snapshot().words());assertEquals(Long.valueOf(1),stats.snapshot().errors().get("input"));
+            connect(s,"");
+            deliver(s,generation(s),"Готовый API","");assertEquals(2,stats.snapshot().words());
+        }finally{c.destroy();}
+    }
     @Test public void onlyMicrophoneIsVisibleWhenIdle(){
         var c=Robolectric.buildService(WispImeService.class).create();try{
             ViewGroup root=(ViewGroup)c.get().onCreateInputView();assertNotNull(bubble(root));

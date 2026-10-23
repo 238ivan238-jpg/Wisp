@@ -28,11 +28,14 @@ public final class WispImeService extends InputMethodService {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private SecureSettings settings;
+    private UsageStats stats;
     private MediaRecorder recorder;
     private File audio;
     private Future<?> request;
     private GroqClient activeApi;
     private long started,touchDown;
+    private long sessionTime;
+    private String activeMode="clean";
     private int generation;
     private boolean busy,sensitive,dragging,longPressed;
     private float downX,downY,startX,startY;
@@ -41,7 +44,7 @@ public final class WispImeService extends InputMethodService {
     private TextView status;
     private VoiceBubble mic;
     @Override public void onCreate(){
-        super.onCreate();settings=new SecureSettings(this);
+        super.onCreate();settings=new SecureSettings(this);stats=new UsageStats(this);
         File[] stale=getCacheDir().listFiles((dir,name)->name.startsWith("wisp-audio-")&&name.endsWith(".m4a"));
         if(stale!=null)for(File f:stale)f.delete();
     }
@@ -152,10 +155,10 @@ public final class WispImeService extends InputMethodService {
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setAudioChannels(1);recorder.setAudioSamplingRate(16000);
             recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(120000);
             recorder.setOnInfoListener((r,what,extra)->{if(what==MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED)stopAndProcess();});
-            recorder.setOnErrorListener((r,what,extra)->{cancelSession();error("Микрофон прервал запись. Попробуйте ещё раз.");});
-            recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();
+            recorder.setOnErrorListener((r,what,extra)->{stats.recordFailure("microphone");cancelSession();error("Микрофон прервал запись. Попробуйте ещё раз.");});
+            recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();sessionTime=System.currentTimeMillis();
             mic.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);mic.setState(VoiceBubble.RECORDING);handler.post(tick);
-        }catch(Exception e){cancelSession();error("Не удалось включить микрофон. Проверьте разрешение и другие приложения записи.");}
+        }catch(Exception e){stats.recordFailure("microphone");cancelSession();error("Не удалось включить микрофон. Проверьте разрешение и другие приложения записи.");}
     }
     private final Runnable tick=new Runnable(){public void run(){
         if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;
@@ -165,28 +168,32 @@ public final class WispImeService extends InputMethodService {
     private void stopAndProcess(){
         if(recorder==null)return;long duration=SystemClock.elapsedRealtime()-started;
         MediaRecorder r=recorder;recorder=null;handler.removeCallbacks(tick);
-        try{r.stop();}catch(RuntimeException e){r.release();cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
+        try{r.stop();}catch(RuntimeException e){stats.recordFailure("microphone");r.release();cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
         r.release();
         if(duration<650){cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
+        stats.recordUse(sessionTime,duration);
         busy=true;mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);setStatus("Распознаю…");
         final int token=generation;final File recorded=audio;final GroqClient api=new GroqClient();activeApi=api;
         final String lang=settings.language(),mode=settings.mode(),vocabulary=settings.vocabulary();final boolean turbo=settings.turbo();
+        activeMode=mode;
         request=worker.submit(()->{
             try{
                 DictationPipeline.Result result=DictationPipeline.run(api,recorded,settings.readKey(),lang,turbo,vocabulary,mode,
-                    original->post(token,()->setStatus("Обрабатываю текст…")));
+                    original->post(token,()->setStatus("translate".equals(mode)?"Перевожу на английский…":"Обрабатываю текст…")));
                 post(token,()->deliver(token,result));
-            }catch(Exception e){post(token,()->{busy=false;error(GroqClient.friendlyError(e));});}
+            }catch(Exception e){post(token,()->{stats.recordFailure(GroqClient.failureCategory(e));busy=false;error(GroqClient.friendlyError(e));});}
             finally{recorded.delete();}
         });
     }
     private void deliver(int token,DictationPipeline.Result result){
         if(token!=generation||sensitive)return;busy=false;resetUi();
+        if(!result.errorCategory().isEmpty())stats.recordFailure(result.errorCategory());
         InputConnection ic=getCurrentInputConnection();
-        if(ic==null){error("Поле ввода закрыто. Откройте его и повторите диктовку.");return;}
+        if(ic==null){stats.recordFailure("input");error("Поле ввода закрыто. Откройте его и повторите диктовку.");return;}
         CharSequence selected=ic.getSelectedText(0);
         String insertion=DictationText.insertion(result.text(),ic.getTextBeforeCursor(2,0),selected!=null&&selected.length()>0);
-        if(insertion.isEmpty()||!ic.commitText(insertion,1)){error("Поле не приняло текст. Откройте его и повторите диктовку.");return;}
+        if(insertion.isEmpty()||!ic.commitText(insertion,1)){stats.recordFailure("input");error("Поле не приняло текст. Откройте его и повторите диктовку.");return;}
+        stats.recordInsertion(sessionTime>0?sessionTime:System.currentTimeMillis(),result.original(),result.text(),activeMode,result.warning().isEmpty());
         if(!result.warning().isEmpty())setStatus(result.warning().replace("Сохранён исходный текст.","Вставлен исходный текст."));
     }
     private void post(int token,Runnable action){handler.post(()->{if(token==generation)action.run();});}

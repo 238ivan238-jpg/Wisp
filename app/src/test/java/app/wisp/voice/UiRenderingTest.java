@@ -46,4 +46,9 @@ public class UiRenderingTest {
         var controller=Robolectric.buildService(WispImeService.class).create();
         try{render(controller.get().onCreateInputView(),"bubble-dark.png",2300);}finally{controller.destroy();}
     }
+    @Test public void renderStatisticsWithActualChartData()throws Exception{
+        UsageStats stats=new UsageStats(RuntimeEnvironment.getApplication());
+        for(int i=0;i<7;i++)for(int j=0;j<=i;j++)stats.recordUse(java.time.LocalDate.now().minusDays(i).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),10000);
+        try(var controller=Robolectric.buildActivity(StatsActivity.class).setup()){render(controller.get().getWindow().getDecorView(),"statistics.png",2300);}
+    }
 }

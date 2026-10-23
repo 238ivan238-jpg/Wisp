@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 6,
-  "versionName": "1.0.5",
+  "versionCode": 7,
+  "versionName": "1.0.6",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.5.apk",
-  "sha256": "a8cba30a9ac9cd078befceea5bc2ce372b12c6543d29f99ce2fcad89a3725536",
-  "size": 5050054,
-  "notes": "Один основной режим «Чистый текст»: исправления, пунктуация, слова-паразиты и автоматические списки. Отдельные режимы письма и заметки убраны; старые настройки переходят на общую обработку."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.6.apk",
+  "sha256": "dec553eeadaf69926c8bfca03603793b557708e06b4807221ade204e3075599e",
+  "size": 5074038,
+  "notes": "Добавлены локальная статистика с графиками за 7/30 дней, счётчики слов и времени, частые удалённые слова-паразиты и причины сбоев. В настройках появился перевод диктовки на английский. Основной режим — «Чистый текст»."
 }
