@@ -179,13 +179,13 @@ public final class WispImeService extends InputMethodService {
         journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.SUCCESS,activeMode,duration,-1,-1);
         busy=true;mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);setStatus("Распознаю…");
         final int token=generation;final File recorded=audio;final String operationTrace=trace;
-        final String lang=settings.language(),mode=settings.mode(),vocabulary=settings.vocabulary();final boolean turbo=settings.turbo();
+        final String lang=settings.language(),mode=settings.mode(),vocabulary=settings.vocabulary();final boolean turbo=settings.turbo(),emojis=settings.emojis();
         final GroqClient api=new GroqClient(journal,operationTrace,mode);activeApi=api;
         activeMode=mode;
         request=worker.submit(()->{
             try{
                 String key;try{key=settings.readKey();}catch(Exception e){journal.failure(operationTrace,DiagnosticLog.Stage.KEY_STORAGE,mode,e);throw e;}
-                DictationPipeline.Result result=DictationPipeline.run(api,recorded,key,lang,turbo,vocabulary,mode,
+                DictationPipeline.Result result=DictationPipeline.run(api,recorded,key,lang,turbo,vocabulary,mode,emojis,
                     original->post(token,()->setStatus("translate".equals(mode)?"Перевожу на английский…":"Обрабатываю текст…")));
                 post(token,()->deliver(token,result));
             }catch(Exception e){post(token,()->{tracePending=false;journal.failure(operationTrace,DiagnosticLog.Stage.TRANSCRIPTION,mode,e);stats.recordFailure(GroqClient.failureCategory(e));busy=false;error(GroqClient.friendlyError(e));});}

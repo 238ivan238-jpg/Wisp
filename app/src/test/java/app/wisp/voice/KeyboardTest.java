@@ -53,6 +53,7 @@ public class KeyboardTest {
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
             View root=a.get().getWindow().getDecorView();assertNotNull(find(root,"Проверить обновления"));
             assertNotNull(find(root,"Язык: русский + English (авто)"));assertTrue(((android.widget.Switch)find(root,"Чистый текст")).isChecked());
+            assertFalse(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());
             find(root,"Язык: русский + English (авто)").performClick();assertNotNull(find(root,"Язык: русский"));
             assertEquals(0,a.get().getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE);
         }
@@ -89,6 +90,26 @@ public class KeyboardTest {
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
             View root=a.get().getWindow().getDecorView();assertTrue(((android.widget.Switch)find(root,"Переводить на английский")).isChecked());
             find(root,"Чистый текст").performClick();assertEquals("raw",new SecureSettings(context).mode());assertFalse(((android.widget.Switch)find(root,"Переводить на английский")).isChecked());
+        }
+    }
+    @Test public void emojiToggleEnablesProcessingPersistsAndCoexistsWithTranslation(){
+        var context=RuntimeEnvironment.getApplication();var settings=new SecureSettings(context);settings.setMode("raw");
+        assertFalse(settings.emojis());
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            View root=a.get().getWindow().getDecorView();find(root,"Добавлять эмодзи").performClick();
+            assertTrue(((android.widget.Switch)find(root,"Чистый текст")).isChecked());assertEquals("clean",settings.mode());assertTrue(settings.emojis());
+            find(root,"Переводить на английский").performClick();assertEquals("translate",settings.mode());assertTrue(settings.emojis());
+        }
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            View root=a.get().getWindow().getDecorView();assertTrue(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());
+            find(root,"Добавлять эмодзи").performClick();assertFalse(settings.emojis());assertEquals("translate",settings.mode());
+            find(root,"Добавлять эмодзи").performClick();assertTrue(settings.emojis());
+            find(root,"Чистый текст").performClick();assertEquals("raw",settings.mode());assertFalse(settings.emojis());
+            assertFalse(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());assertFalse(((android.widget.Switch)find(root,"Переводить на английский")).isChecked());
+        }
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            View root=a.get().getWindow().getDecorView();assertFalse(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());
+            find(root,"Чистый текст").performClick();assertEquals("clean",settings.mode());assertFalse(settings.emojis());
         }
     }
     @Test public void failedOrStaleInsertionDoesNotCountWordsButSuccessfulInsertionDoes()throws Exception{

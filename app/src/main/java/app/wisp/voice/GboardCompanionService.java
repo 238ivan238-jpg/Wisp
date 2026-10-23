@@ -134,10 +134,10 @@ public final class GboardCompanionService extends AccessibilityService {
         stats.recordUse(sessionTime,duration);journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.SUCCESS,mode,duration,-1,-1);
         busy=true;bubble.setEnabled(false);bubble.setState(VoiceBubble.WORKING);status("Распознаю…");
         try{notification("Обработка диктовки");}catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);cancel();status("Android прервал доступ к микрофону. Проверьте разрешение записи.");return;}
-        int token=generation;File recorded=audio;String taskMode=mode,taskTrace=trace;long when=sessionTime;String language=settings.language(),vocabulary=settings.vocabulary();boolean turbo=settings.turbo();
+        int token=generation;File recorded=audio;String taskMode=mode,taskTrace=trace;long when=sessionTime;String language=settings.language(),vocabulary=settings.vocabulary();boolean turbo=settings.turbo(),emojis=settings.emojis();
         GroqClient client=new GroqClient(journal,taskTrace,taskMode);api=client;
         request=worker.submit(()->{try{
-            var result=DictationPipeline.run(client,recorded,settings.readKey(),language,turbo,vocabulary,taskMode,s->post(token,()->status("translate".equals(taskMode)?"Перевожу на английский…":"Обрабатываю текст…")));
+            var result=DictationPipeline.run(client,recorded,settings.readKey(),language,turbo,vocabulary,taskMode,emojis,s->post(token,()->status("translate".equals(taskMode)?"Перевожу на английский…":"Обрабатываю текст…")));
             post(token,()->deliver(result,when,taskMode,taskTrace));
         }catch(Exception e){post(token,()->{journal.failure(taskTrace,DiagnosticLog.Stage.TRANSCRIPTION,taskMode,e);stats.recordFailure(GroqClient.failureCategory(e));done();status(GroqClient.friendlyError(e));});}finally{recorded.delete();}});
     }

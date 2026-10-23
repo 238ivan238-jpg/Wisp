@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 9,
-  "versionName": "1.0.8",
+  "versionCode": 10,
+  "versionName": "1.0.9",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.8.apk",
-  "sha256": "554d3eb070dd567ea9558b809ff635d3af3828fa7ee6ed243f972b6710410d55",
-  "size": 5119170,
-  "notes": "Запись до пяти минут вместо двух: обновлены таймер, индикатор и учёт времени в статистике. Работает поверх Gboard и в клавиатуре Wisp."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.9.apk",
+  "sha256": "578a9bca2d1409a7053ee27017d60c5a67001244231397c62d146521861f0c39",
+  "size": 5122298,
+  "notes": "Новая настройка «Добавлять эмодзи»: уместные эмодзи при диктовке и переводе на английский. По умолчанию выключена. Лимит записи — пять минут."
 }

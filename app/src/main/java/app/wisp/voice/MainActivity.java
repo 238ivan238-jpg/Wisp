@@ -101,7 +101,7 @@ public final class MainActivity extends Activity {
         });
         check.setOnClickListener(v->{
             String entered=ApiKey.normalize(keyField.getText().toString());
-            boolean translation="translate".equals(settings.mode());
+            boolean translation="translate".equals(settings.mode()),emojiStyle=settings.emojis();
             DiagnosticLog journal=new DiagnosticLog(this);String trace=DiagnosticLog.session(),selectedMode=translation?"translate":"clean";
             journal.event(trace,DiagnosticLog.Stage.KEY_CHECK,DiagnosticLog.Outcome.START,selectedMode,0,-1,-1);
             check.setEnabled(false); report("Проверяем доступ к Groq…",true);
@@ -110,7 +110,7 @@ public final class MainActivity extends Activity {
                 try {
                     String key=entered.isEmpty()?settings.readKey():entered;
                     GroqClient client=new GroqClient(journal,trace,selectedMode);client.checkKey(key);
-                    if(translation)client.translate("Проверка подключения.",key,"");else client.clean("Проверка подключения.",key);
+                    if(translation)client.translate("Проверка подключения.",key,"",emojiStyle);else client.clean("Проверка подключения.",key,"",emojiStyle);
                     message=entered.isEmpty()?"Сохранённый ключ работает, Whisper доступен. Текстовая модель ответила на тестовую фразу."
                         :"Ключ работает, текстовая модель ответила. Нажмите «Сохранить», чтобы использовать ключ для диктовки."; ok=true;
                     journal.event(trace,DiagnosticLog.Stage.KEY_CHECK,DiagnosticLog.Outcome.SUCCESS,selectedMode,0,-1,-1);
@@ -133,9 +133,13 @@ public final class MainActivity extends Activity {
         options.addView(Ui.text(this,"Исправляет оговорки и грамматику, убирает слова-паразиты и случайные повторы. Знаки препинания и абзацы передают смысл фразы; перечисления оформляются списком автоматически. Русский и English сохраняются без перевода. Если выключить — только расшифровка речи.",12,Ui.muted(this)));Ui.gap(options,8);
         Switch translate=new Switch(this);translate.setText("Переводить на английский");translate.setTextColor(Ui.foreground(this));translate.setTextSize(14);
         translate.setChecked("translate".equals(settings.mode()));translate.setPadding(0,Ui.dp(this,12),0,Ui.dp(this,12));options.addView(translate,Ui.fill(this,-2));
-        cleanup.setOnCheckedChangeListener((button,on)->{if(!on)translate.setChecked(false);settings.setMode(on?(translate.isChecked()?"translate":"clean"):"raw");});
-        translate.setOnCheckedChangeListener((button,on)->{if(on)cleanup.setChecked(true);settings.setMode(on?"translate":cleanup.isChecked()?"clean":"raw");});
         options.addView(Ui.text(this,"Говорите по-русски или вперемешку — в поле вставится отредактированный английский перевод. Смысл, имена и технические термины сохраняются. Включение перевода включает обработку текста.",12,Ui.muted(this)));Ui.gap(options,8);
+        Switch emojis=new Switch(this);emojis.setText("Добавлять эмодзи");emojis.setTextColor(Ui.foreground(this));emojis.setTextSize(14);
+        emojis.setChecked(settings.emojis());emojis.setPadding(0,Ui.dp(this,12),0,Ui.dp(this,12));options.addView(emojis,Ui.fill(this,-2));
+        options.addView(Ui.text(this,"Добавляет один-два подходящих по смыслу эмодзи на весь текст, когда это уместно. Работает и с переводом на английский. Для этой функции нужна обработка текста. Если выключить «Чистый текст», эмодзи тоже отключатся.",12,Ui.muted(this)));Ui.gap(options,8);
+        cleanup.setOnCheckedChangeListener((button,on)->{if(!on){translate.setChecked(false);emojis.setChecked(false);}settings.setMode(on?(translate.isChecked()?"translate":"clean"):"raw");});
+        translate.setOnCheckedChangeListener((button,on)->{if(on)cleanup.setChecked(true);settings.setMode(on?"translate":cleanup.isChecked()?"clean":"raw");});
+        emojis.setOnCheckedChangeListener((button,on)->{if(on)cleanup.setChecked(true);settings.setEmojis(on);});
         Switch turbo=new Switch(this);turbo.setText("Быстрый Whisper Turbo");turbo.setTextColor(Ui.foreground(this));turbo.setTextSize(14);
         turbo.setChecked(settings.turbo());turbo.setPadding(0,Ui.dp(this,12),0,Ui.dp(this,12));options.addView(turbo,Ui.fill(this,-2));
         turbo.setOnCheckedChangeListener((b,on)->settings.setTurbo(on));
