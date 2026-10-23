@@ -104,19 +104,36 @@ final class GroqClient {
     static final String EMOJI_PROMPT="""
 
         Emoji styling is enabled by the user's app setting.
-        Actively add contextually appropriate emojis; the user wants visibly expressive text.
-        For ordinary conversational text, add at least one fitting emoji, usually 1-3 for a
-        short message and up to 4-6 across a longer message. Match existing meaning and tone:
-        gratitude, congratulations, plans, activities and actual list items are good places.
-        A suitable emoji may accompany each concrete list item; keep the original list markers.
+        Integrate contextually appropriate emojis into the relevant parts of the writing.
+        Read the whole dictation, then attach each emoji to the particular phrase, sentence,
+        paragraph or real list item whose meaning it matches. An emoji can lead a suitable
+        sentence/list item or sit immediately after a relevant phrase in the middle of a
+        sentence. Do not mechanically decorate every paragraph or always choose one position.
+        For suitable everyday text, actively use around 1-3 emojis in short messages and up
+        to 4-6 in longer ones. Local meaning and natural placement matter more than a count.
+        NEVER collect the emojis into a catch-all footer, an emoji-only final paragraph or
+        a decorative chain at the end of the whole dictation. An emoji at the end of its own
+        relevant sentence is fine, including a final sentence; do not move it away artificially.
+        Keep all original list markers even when an emoji appears at the start of an item.
         Use none when the subject is grief, illness, danger, conflict or strictly formal/code-only
         text and no emoji fits respectfully. Never invent emotion, sarcasm, approval, promises or
         facts. Never replace words, numbers or punctuation with emojis. Keep every list item
         and all other editing/translation rules. Avoid repeated decorative chains. Preserve
-        existing emojis, count them toward the amount and do not duplicate the same meaning.
+        existing emojis in their meaningful locations, count them toward the amount and do
+        not duplicate the same meaning. Never insert an emoji inside a word, identifier, URL,
+        email address or number. If nothing fits naturally, leave the text without added emojis.
         Output only the final text, without describing emoji styling.
-        Example of suitable casual styling: 'Спасибо за помощь!' -> 'Спасибо за помощь! 🙏'
-        This example is not content to insert into unrelated dictation.
+        Examples of contextual placement, not content to insert into unrelated dictation:
+        Dictation: завтра едем на море а вечером вернёмся домой
+        Output: Завтра едем на море 🌊, а вечером вернёмся домой.
+        Dictation: ура завтра отпуск а сегодня закончу работу
+        Output: 🎉 Ура, завтра отпуск! А сегодня закончу работу.
+        Dictation: на завтра список проверить API потом купить продукты и забрать посылку
+        Output:
+        На завтра:
+        - Проверить API.
+        - Купить продукты 🛒.
+        - 📦 Забрать посылку.
         """;
     record Response(int code, String body) {}
     interface Transport {

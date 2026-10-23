@@ -17,9 +17,13 @@ public class EmojiTest {
             .put("finish_reason","stop").put("message",new JSONObject().put("content",text)))).toString());
     }
     @Test public void enabledStyleReachesBothEditingTasksAndPreservesUnicodeListsAndDictionary()throws Exception{
-        for(String mode:new String[]{"clean","translate"}){
-            String source="спасибо за помощь проверь GitHub и не меняй API";
-            String output="translate".equals(mode)?"Thanks for your help! 🙏\n- Check GitHub.\n- Don't change the API.":"Спасибо за помощь! 🙏\n- Проверь GitHub.\n- Не меняй API.";
+        String[][] examples={
+            {"на завтра список проверить GitHub потом купить продукты и забрать посылку","На завтра:\n- Проверить GitHub.\n- Купить продукты 🛒.\n- 📦 Забрать посылку.","For tomorrow:\n- Review GitHub.\n- Buy groceries 🛒.\n- 📦 Pick up the parcel."},
+            {"завтра едем на море а вечером вернёмся домой","Завтра едем на море 🌊, а вечером вернёмся домой.","Tomorrow we're going to the seaside 🌊, and we'll be back home in the evening."},
+            {"ура завтра отпуск а сегодня закончу работу","🎉 Ура, завтра отпуск! А сегодня закончу работу.","🎉 Hooray, my vacation starts tomorrow! I'll finish work today."}
+        };
+        for(String mode:new String[]{"clean","translate"})for(String[] example:examples){
+            String source=example[0],output=example["translate".equals(mode)?2:1];
             AtomicInteger calls=new AtomicInteger();
             GroqClient api=new GroqClient((p,m,k,t,b)->{
                 calls.incrementAndGet();String request=new String(b,StandardCharsets.UTF_8);

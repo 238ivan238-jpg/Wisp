@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 13,
-  "versionName": "1.0.12",
+  "versionCode": 14,
+  "versionName": "1.0.13",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.12.apk",
-  "sha256": "77534af3df218129de9574e440bb61bcc6ccc199e2d9420a2e63c7afeca3ef9b",
-  "size": 5127746,
-  "notes": "Новый компактный интерфейс: нижние вкладки «Голос», «Словарь», «Статистика», «Диагностика», «Настройки». Подключение, ключ и обновления — отдельными страницами. Убраны длинная лента и пробное поле. Эмодзи при включённой функции добавляются активнее."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.13.apk",
+  "sha256": "f72880c0609836b14085ba5a8b9d375e2bb8729eb21b1ce4e403834567a2abc5",
+  "size": 5128966,
+  "notes": "Эмодзи теперь привязываются к конкретным фразам и пунктам: примеры начала и середины текста, запрет общего декоративного хвоста в конце. Работает с обычной обработкой и переводом на английский."
 }

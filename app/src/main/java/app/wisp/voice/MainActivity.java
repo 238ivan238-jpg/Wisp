@@ -60,7 +60,7 @@ public final class MainActivity extends Activity {
         Button language=Ui.button(this,languageLabel(),false);page.addView(language,Ui.fill(this,48));
         language.setOnClickListener(v->{String lang=settings.language();settings.setLanguage(lang.equals("auto")?"ru":lang.equals("ru")?"en":"auto");language.setText(languageLabel());});Ui.gap(page,12);
         Switch cleanup=toggle(page,"Чистый текст",!settings.mode().equals("raw"));hint(page,"Исправления, пунктуация и списки.");
-        Switch emojis=toggle(page,"Добавлять эмодзи",settings.emojis());hint(page,"Больше эмодзи по смыслу, в том числе в переводе.");
+        Switch emojis=toggle(page,"Добавлять эмодзи",settings.emojis());hint(page,"Эмодзи рядом с подходящими фразами и пунктами.");
         cleanup.setOnCheckedChangeListener((b,on)->{if(!on)emojis.setChecked(false);settings.setMode(on?"clean":"raw");});
         emojis.setOnCheckedChangeListener((b,on)->{if(on)cleanup.setChecked(true);settings.setEmojis(on);});
         Switch turbo=toggle(page,"Быстрый Whisper Turbo",settings.turbo());turbo.setOnCheckedChangeListener((b,on)->settings.setTurbo(on));hint(page,"По умолчанию — Whisper Large v3.");Ui.gap(page,12);
