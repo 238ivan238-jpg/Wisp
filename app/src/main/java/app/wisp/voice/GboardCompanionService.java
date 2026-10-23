@@ -114,7 +114,7 @@ public final class GboardCompanionService extends AccessibilityService {
             notification("Запись микрофона");
             audio=File.createTempFile("wisp-floating-",".m4a",getCacheDir());recorder=new MediaRecorder(this);
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-            recorder.setAudioChannels(1);recorder.setAudioSamplingRate(16000);recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(120000);
+            recorder.setAudioChannels(1);recorder.setAudioSamplingRate(16000);recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(RecordingLimits.MAX_DURATION_MS);
             recorder.setOnInfoListener((r,what,extra)->{if(what==MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED)process();});
             recorder.setOnErrorListener((r,what,extra)->{stats.recordFailure("microphone");journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.FAILURE,mode,0,-1,-1);cancel();status("Запись прервалась. Попробуйте ещё раз.");});
             recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();bubble.setState(VoiceBubble.RECORDING);bubble.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);handler.post(tick);
@@ -126,7 +126,7 @@ public final class GboardCompanionService extends AccessibilityService {
         Notification n=new Notification.Builder(this,"wisp_dictation").setSmallIcon(R.drawable.ic_mic_notification).setContentTitle("Wisp").setContentText(text).setContentIntent(intent).setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).build();
         startForeground(31,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);foreground=true;
     }
-    private final Runnable tick=new Runnable(){public void run(){if(!allowed()){cancel();hide();return;}if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;status(String.format(Locale.ROOT,"%02d:%02d / 02:00",seconds/60,seconds%60));bubble.setProgress(seconds/120f);handler.postDelayed(this,100);}};
+    private final Runnable tick=new Runnable(){public void run(){if(!allowed()){cancel();hide();return;}if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;status(String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));bubble.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);handler.postDelayed(this,100);}};
     private void process(){
         if(recorder==null)return;long duration=SystemClock.elapsedRealtime()-started;MediaRecorder r=recorder;recorder=null;handler.removeCallbacks(tick);
         try{r.stop();}catch(RuntimeException e){r.release();journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);cancel();status("Запись слишком короткая. Говорите хотя бы секунду.");return;}r.release();

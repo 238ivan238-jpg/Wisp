@@ -55,7 +55,7 @@ final class UsageStats {
         }catch(Exception ignored){/* Statistics must not interrupt dictation. */}}
     }
     void recordUse(long when,long durationMs){
-        long duration=Math.max(0,Math.min(120000,durationMs));
+        long duration=Math.max(0,Math.min(RecordingLimits.MAX_DURATION_MS,durationMs));
         update(v->{add(v,"sessions",1);add(v,"durationMs",duration);JSONObject d=daily(v,when);add(d,"sessions",1);add(d,"durationMs",duration);});
     }
     static long words(String text){long count=0;var matcher=WORD.matcher(text==null?"":text);while(matcher.find())count++;return count;}

@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 8,
-  "versionName": "1.0.7",
+  "versionCode": 9,
+  "versionName": "1.0.8",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.7.apk",
-  "sha256": "0487ab82adcbd99ac6d073cf3e57e8d58116ca86c13afac112db099c64c44fe0",
-  "size": 5118914,
-  "notes": "Gboard остаётся основной клавиатурой: включите помощник Wisp в специальных возможностях Android 13+. Добавлены экспорт логов ошибок, график за 365 дней и исправлен возврат из статистики."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.8.apk",
+  "sha256": "554d3eb070dd567ea9558b809ff635d3af3828fa7ee6ed243f972b6710410d55",
+  "size": 5119170,
+  "notes": "Запись до пяти минут вместо двух: обновлены таймер, индикатор и учёт времени в статистике. Работает поверх Gboard и в клавиатуре Wisp."
 }

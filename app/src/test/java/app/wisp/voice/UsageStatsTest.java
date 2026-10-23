@@ -15,10 +15,10 @@ public class UsageStatsTest {
     private UsageStats stats;
     @Before public void setup(){stats=new UsageStats(RuntimeEnvironment.getApplication());stats.clear();}
     @Test public void countersPersistAcrossStoreInstancesAndAreGroupedByRecordingDay(){
-        long when=System.currentTimeMillis();stats.recordUse(when,65000);stats.recordInsertion(when,"Ну, API готов.","API готов.","clean",true);
+        long when=System.currentTimeMillis();stats.recordUse(when,285000);stats.recordInsertion(when,"Ну, API готов.","API готов.","clean",true);
         var s=new UsageStats(RuntimeEnvironment.getApplication()).snapshot();
-        assertEquals(1,s.sessions());assertEquals(65000,s.durationMs());assertEquals(2,s.words());
-        assertEquals(new UsageStats.Day(1,2,65000),s.days().get(UsageStats.day(when)));assertEquals(Long.valueOf(1),s.fillers().get("ну"));
+        assertEquals(1,s.sessions());assertEquals(285000,s.durationMs());assertEquals(2,s.words());
+        assertEquals(new UsageStats.Day(1,2,285000),s.days().get(UsageStats.day(when)));assertEquals(Long.valueOf(1),s.fillers().get("ну"));
     }
     @Test public void countsOnlyRemovedFillersWithWholeWordBoundaries(){
         stats.recordInsertion(System.currentTimeMillis(),"Ну, ну, типа, э-э, как бы прототип готов.","Ну, прототип готов.","clean",true);

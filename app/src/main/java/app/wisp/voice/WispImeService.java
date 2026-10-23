@@ -157,7 +157,7 @@ public final class WispImeService extends InputMethodService {
             recorder=Build.VERSION.SDK_INT>=31?new MediaRecorder(this):new MediaRecorder();
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setAudioChannels(1);recorder.setAudioSamplingRate(16000);
-            recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(120000);
+            recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(RecordingLimits.MAX_DURATION_MS);
             recorder.setOnInfoListener((r,what,extra)->{if(what==MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED)stopAndProcess();});
             recorder.setOnErrorListener((r,what,extra)->{journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.FAILURE,activeMode,0,-1,-1);stats.recordFailure("microphone");cancelSession();error("Микрофон прервал запись. Попробуйте ещё раз.");});
             recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();sessionTime=System.currentTimeMillis();
@@ -166,7 +166,7 @@ public final class WispImeService extends InputMethodService {
     }
     private final Runnable tick=new Runnable(){public void run(){
         if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;
-        setStatus(String.format(Locale.ROOT,"%02d:%02d / 02:00",seconds/60,seconds%60));mic.setProgress(seconds/120f);
+        setStatus(String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));mic.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);
         handler.postDelayed(this,90);
     }};
     private void stopAndProcess(){
