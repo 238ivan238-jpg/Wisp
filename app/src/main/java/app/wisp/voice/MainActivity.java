@@ -65,6 +65,8 @@ public final class MainActivity extends Activity {
         LinearLayout api=Ui.card(this); page.addView(api,Ui.fill(this,-2));
         api.addView(Ui.bold(this,"02   Подключите Groq",18,Ui.TEXT)); Ui.gap(api,8);
         api.addView(Ui.text(this,"Своего сервера и подписки Wisp нет. Распознавание и очистка работают через ваш аккаунт Groq; действуют его тарифы и лимиты.",13,Ui.MUTED));
+        Ui.gap(api,6);
+        api.addView(Ui.text(this,"«Проверить» проверяет список моделей и очистку короткой тестовой фразы. Аудио не записывается.",12,Ui.MUTED));
         Ui.gap(api,12);
         Button getKey=Ui.button(this,"Создать ключ на console.groq.com ↗",false); api.addView(getKey,Ui.fill(this,-2));
         getKey.setOnClickListener(v->{
@@ -95,9 +97,10 @@ public final class MainActivity extends Activity {
             worker.submit(()->{
                 String message; boolean ok;
                 try {
-                    new GroqClient().checkKey(entered.isBlank()?settings.readKey():entered);
-                    message=entered.isEmpty()?"Сохранённый ключ работает, Whisper доступен. Проверка не отправляет аудио."
-                        :"Введённый ключ работает, Whisper доступен. Нажмите «Сохранить», чтобы использовать его для диктовки."; ok=true;
+                    String key=entered.isEmpty()?settings.readKey():entered;
+                    GroqClient client=new GroqClient();client.checkKey(key);client.clean("Проверка подключения.",key);
+                    message=entered.isEmpty()?"Сохранённый ключ работает, Whisper доступен. ИИ-очистка тестовой фразы прошла успешно."
+                        :"Ключ и ИИ-очистка работают. Нажмите «Сохранить», чтобы использовать ключ для диктовки."; ok=true;
                 } catch(Exception e) { message=GroqClient.friendlyError(e); ok=false; }
                 String result=message; boolean success=ok;
                 runOnUiThread(()->{ if(!isDestroyed()) { check.setEnabled(true); report(result,success); } });
@@ -129,8 +132,8 @@ public final class MainActivity extends Activity {
         sandbox.setMinLines(3);sandbox.setGravity(android.view.Gravity.TOP);sandbox.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         sandbox.setSaveEnabled(false);test.addView(sandbox,Ui.fill(this,-2));
         Ui.gap(page,20);
-        page.addView(Ui.text(this,"Только по вашему нажатию: аудио → Groq Whisper, текст → Groq Llama для очистки. Записи удаляются после обработки или отмены. Политика хранения Groq действует отдельно. В полях паролей микрофон отключён.",12,Ui.MUTED));
-        Ui.gap(page,12);page.addView(Ui.text(this,"WISP  /  1.0.1     •     СДЕЛАНО ДЛЯ ВАШЕГО ГОЛОСА",10,Ui.MINT));
+        page.addView(Ui.text(this,"Только по вашему нажатию: аудио → Groq Whisper, текст → Groq для очистки. Записи удаляются после обработки или отмены. Политика хранения Groq действует отдельно. В полях паролей микрофон отключён.",12,Ui.MUTED));
+        Ui.gap(page,12);page.addView(Ui.text(this,"WISP  /  1.0.2     •     СДЕЛАНО ДЛЯ ВАШЕГО ГОЛОСА",10,Ui.MINT));
     }
     private void report(String text,boolean ok) { feedback.setText(text); feedback.setTextColor(ok?Ui.MINT:Ui.ERROR); }
     private void refresh() {
