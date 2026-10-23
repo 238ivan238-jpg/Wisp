@@ -60,6 +60,7 @@ fi
 cd "$WISP_REPO_ROOT"
 ./gradlew --console=plain assembleRelease testDebugUnitTest lintDebug lintRelease
 mkdir -p dist
-cp app/build/outputs/apk/release/app-release.apk dist/Wisp-1.0.0.apk
-"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose dist/Wisp-1.0.0.apk
-sha256sum dist/Wisp-1.0.0.apk > dist/Wisp-1.0.0.apk.sha256
+wisp_version="$(python3 -c 'import json; print(json.load(open("app/build/outputs/apk/release/output-metadata.json"))["elements"][0]["versionName"])')"
+cp app/build/outputs/apk/release/app-release.apk "dist/Wisp-$wisp_version.apk"
+"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "dist/Wisp-$wisp_version.apk"
+sha256sum "dist/Wisp-$wisp_version.apk" > "dist/Wisp-$wisp_version.apk.sha256"

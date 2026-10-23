@@ -21,6 +21,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Selection;
 import android.view.inputmethod.BaseInputConnection;
 import org.robolectric.util.ReflectionHelpers;
+import android.view.WindowManager;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
@@ -36,6 +37,7 @@ public class KeyboardTest {
             View root=activity.get().getWindow().getDecorView();
             assertNotNull(find(root,"01   Подготовьте клавиатуру"));assertNotNull(find(root,"02   Подключите Groq"));
             assertNotNull(find(root,"Попробуйте прямо здесь"));assertNotNull(find(root,"Сохранить"));
+            assertEquals(0,activity.get().getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE);
         }
     }
     @Test public void passwordFieldsDisableMicrophoneAndInsertion(){

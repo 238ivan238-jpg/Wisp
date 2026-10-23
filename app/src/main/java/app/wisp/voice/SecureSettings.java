@@ -25,7 +25,7 @@ final class SecureSettings {
         return g.generateKey();
     }
     synchronized void saveKey(String value) throws Exception {
-        value=value.trim();
+        value=ApiKey.normalize(value);
         if (value.isEmpty()) { clearKey(); return; }
         Cipher c=Cipher.getInstance("AES/GCM/NoPadding"); c.init(Cipher.ENCRYPT_MODE, key());
         String iv=Base64.encodeToString(c.getIV(),Base64.NO_WRAP);

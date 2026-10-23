@@ -28,14 +28,17 @@ final class GroqClient {
     GroqClient(Transport transport) { this.transport=transport; }
     void cancel() { transport.cancel(); }
     private JSONObject request(String path,String method,String key,String type,byte[] body) throws Exception {
-        if (key==null||key.isBlank()) throw new ApiException("Добавьте API-ключ Groq в приложении Wisp.");
+        key=ApiKey.normalize(key);
+        if (key.isEmpty()) throw new ApiException("Добавьте API-ключ Groq в приложении Wisp.");
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException();
         Response r=transport.send(path,method,key,type,body);
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException();
         if(r.code()<200||r.code()>=300) throw new ApiException(switch(r.code()) {
-            case 401,403 -> "Groq отклонил API-ключ. Проверьте ключ в настройках Wisp.";
+            case 401 -> "HTTP 401: Groq не принял API-ключ. Ключ мог быть отозван или скопирован не полностью. Создайте новый в console.groq.com/keys, вставьте и сохраните его в Wisp.";
+            case 403 -> "HTTP 403: доступ к Groq запрещён. Это не обязательно ошибка ключа: возможны ограничения аккаунта, региона или сети/VPN. Проверьте доступ к Groq в браузере и попробуйте другую доступную сеть.";
+            case 402 -> "HTTP 402: Groq требует проверить оплату или доступ аккаунта. Откройте настройки аккаунта Groq.";
             case 413 -> "Запись слишком большая. Запишите более короткую фразу.";
-            case 429 -> "Лимит Groq исчерпан. Подождите и повторите позже.";
+            case 429 -> "HTTP 429: Лимит Groq исчерпан. Подождите и повторите позже.";
             case 400,404 -> "Groq не принял запрос или модель недоступна. Обновите Wisp.";
             default -> "Groq временно недоступен (HTTP "+r.code()+"). Повторите позже.";
         });

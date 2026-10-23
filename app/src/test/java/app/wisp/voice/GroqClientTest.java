@@ -58,6 +58,24 @@ public class GroqClientTest {
         GroqClient c=new GroqClient((p,m,k,t,b)->new GroqClient.Response(401,"{}"));
         assertTrue(assertThrows(GroqClient.ApiException.class,()->c.checkKey("bad")).getMessage().contains("API-ключ"));
     }
+    @Test public void forbiddenAccessIsNotReportedAsAnInvalidKey() {
+        GroqClient c=new GroqClient((p,m,k,t,b)->new GroqClient.Response(403,"blocked secret-test"));
+        String message=assertThrows(GroqClient.ApiException.class,()->c.checkKey("secret-test")).getMessage();
+        assertTrue(message.contains("HTTP 403"));assertTrue(message.contains("не обязательно ошибка ключа"));
+        assertFalse(message.contains("secret-test"));
+    }
+    @Test public void unauthorizedAccessReports401WithoutProviderDetails() {
+        GroqClient c=new GroqClient((p,m,k,t,b)->new GroqClient.Response(401,"sensitive body"));
+        String message=assertThrows(GroqClient.ApiException.class,()->c.checkKey("secret-test")).getMessage();
+        assertTrue(message.contains("HTTP 401"));assertTrue(message.contains("отозван"));assertFalse(message.contains("sensitive"));
+    }
+    @Test public void invisibleCopyPasteCharactersAreNotSentInAuthorization() throws Exception {
+        GroqClient c=new GroqClient((p,m,k,t,b)->{
+            assertEquals("gsk_example",k);
+            return new GroqClient.Response(200,"{\"data\":[{\"id\":\"whisper-large-v3\"}]}");
+        });
+        c.checkKey("\u200bgsk_\nexample\u00a0\ufeff ");
+    }
     @Test public void refusesEmptyAudioTranscript() throws Exception {
         GroqClient c=new GroqClient((p,m,k,t,b)->new GroqClient.Response(200,"{\"text\":\"   \"}"));
         assertThrows(GroqClient.ApiException.class,()->c.transcribe(audio(),"k","ru"));

@@ -10,7 +10,6 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
-import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.*;
 import java.util.concurrent.ExecutorService;
@@ -24,7 +23,6 @@ public final class MainActivity extends Activity {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         settings=new SecureSettings(this);
         ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(Ui.BG);
         LinearLayout page=Ui.column(this); int pad=Ui.dp(this,24); page.setPadding(pad,pad,pad,pad);
@@ -86,19 +84,20 @@ public final class MainActivity extends Activity {
         View spacer=new View(this); buttons.addView(spacer,new LinearLayout.LayoutParams(Ui.dp(this,8),1));
         check=Ui.button(this,"Проверить",false); buttons.addView(check,new LinearLayout.LayoutParams(0,Ui.dp(this,48),1)); api.addView(buttons);
         save.setOnClickListener(v->{
-            String value=keyField.getText().toString().trim();
+            String value=ApiKey.normalize(keyField.getText().toString());
             if(value.isEmpty()) { report("Введите новый ключ или нажмите «Удалить ключ».",false); return; }
             try { settings.saveKey(value); keyField.setText(""); keyField.setHint("Ключ сохранён · введите новый для замены"); report("Ключ зашифрован и сохранён на устройстве.",true); refresh(); }
             catch(Exception e) { report("Не удалось защитить ключ в Android Keystore. Ключ не сохранён.",false); }
         });
         check.setOnClickListener(v->{
-            String entered=keyField.getText().toString().trim();
+            String entered=ApiKey.normalize(keyField.getText().toString());
             check.setEnabled(false); report("Проверяем доступ к Groq…",true);
             worker.submit(()->{
                 String message; boolean ok;
                 try {
                     new GroqClient().checkKey(entered.isBlank()?settings.readKey():entered);
-                    message="Ключ работает, Whisper доступен. Проверка не отправляет аудио."; ok=true;
+                    message=entered.isEmpty()?"Сохранённый ключ работает, Whisper доступен. Проверка не отправляет аудио."
+                        :"Введённый ключ работает, Whisper доступен. Нажмите «Сохранить», чтобы использовать его для диктовки."; ok=true;
                 } catch(Exception e) { message=GroqClient.friendlyError(e); ok=false; }
                 String result=message; boolean success=ok;
                 runOnUiThread(()->{ if(!isDestroyed()) { check.setEnabled(true); report(result,success); } });
@@ -131,7 +130,7 @@ public final class MainActivity extends Activity {
         sandbox.setSaveEnabled(false);test.addView(sandbox,Ui.fill(this,-2));
         Ui.gap(page,20);
         page.addView(Ui.text(this,"Только по вашему нажатию: аудио → Groq Whisper, текст → Groq Llama для очистки. Записи удаляются после обработки или отмены. Политика хранения Groq действует отдельно. В полях паролей микрофон отключён.",12,Ui.MUTED));
-        Ui.gap(page,12);page.addView(Ui.text(this,"WISP  /  1.0.0     •     СДЕЛАНО ДЛЯ ВАШЕГО ГОЛОСА",10,Ui.MINT));
+        Ui.gap(page,12);page.addView(Ui.text(this,"WISP  /  1.0.1     •     СДЕЛАНО ДЛЯ ВАШЕГО ГОЛОСА",10,Ui.MINT));
     }
     private void report(String text,boolean ok) { feedback.setText(text); feedback.setTextColor(ok?Ui.MINT:Ui.ERROR); }
     private void refresh() {
