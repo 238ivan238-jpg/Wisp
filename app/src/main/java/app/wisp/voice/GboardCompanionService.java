@@ -107,7 +107,6 @@ public final class GboardCompanionService extends AccessibilityService {
         if(!settings.hasKey()){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.KEY_STORAGE,DiagnosticLog.Outcome.FAILURE,settings.mode(),0,-1,-1);status("Удерживайте микрофон и сохраните API-ключ Groq.");return;}
         try{
             if(getInputMethod()==null||getInputMethod().getCurrentInputConnection()==null){status("Поле не готово. Коснитесь его и попробуйте ещё раз.");return;}
-            if(getInputMethod().getCurrentInputConnection().getSurroundingText(0,0,0)==null){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.FAILURE,settings.mode(),0,-1,-1);status("Это поле не поддерживает вставку рядом с Gboard. Используйте прежний режим Wisp.");return;}
         }catch(RuntimeException e){journal.failure(DiagnosticLog.session(),DiagnosticLog.Stage.INSERTION,settings.mode(),e);status("Поле не готово к вставке. Коснитесь его и попробуйте ещё раз.");return;}
         cancel();trace=DiagnosticLog.session();mode=settings.modeForRecording(english);bubble.setTranslation(english);sessionTime=System.currentTimeMillis();journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.START,mode,0,-1,-1);
         try{
@@ -152,7 +151,15 @@ public final class GboardCompanionService extends AccessibilityService {
                 public void commit(String text){connection.commitText(text,1,null);}
             },result.text());
             if(outcome==CompanionInsertion.Result.REJECTED){insertionFailure(taskTrace,taskMode,null);return;}
-            if(outcome==CompanionInsertion.Result.UNCONFIRMED){journal.event(taskTrace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.UNCONFIRMED,taskMode,0,-1,-1);status("Текст отправлен в поле. Подтверждение вставки не получено.");handler.postDelayed(()->status(""),2500);return;}
+            if(outcome==CompanionInsertion.Result.UNCONFIRMED||outcome==CompanionInsertion.Result.SENT_WITHOUT_CONTEXT){
+                if(outcome==CompanionInsertion.Result.SENT_WITHOUT_CONTEXT)journal.event(taskTrace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.CONTEXT_UNAVAILABLE,taskMode,0,-1,-1);
+                journal.event(taskTrace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.UNCONFIRMED,taskMode,0,-1,-1);
+                // An editor can accept text without exposing read-back. Never retry
+                // or claim confirmed word counts; retain any processing warning.
+                status(result.warning().isEmpty()?"Текст передан в приложение.":result.warning());
+                if(result.warning().isEmpty()){int token=generation;handler.postDelayed(()->{if(token==generation&&recorder==null&&!busy)status("");},2000);}
+                return;
+            }
             stats.recordInsertion(when,result.original(),result.text(),taskMode,result.warning().isEmpty());journal.event(taskTrace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.SUCCESS,taskMode,0,UsageStats.words(result.original()),UsageStats.words(result.text()));
             status(result.warning().replace("Сохранён исходный текст.","Вставлен исходный текст."));
         }catch(RuntimeException e){insertionFailure(taskTrace,taskMode,e);}
