@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 12,
-  "versionName": "1.0.11",
+  "versionCode": 13,
+  "versionName": "1.0.12",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.11.apk",
-  "sha256": "40e66232340a5b95d59353c75a83df1742dc9c09658076788c609cbc052cb8f1",
-  "size": 5125686,
-  "notes": "Исправлена блокировка диктовки рядом с Gboard в полях без чтения контекста, как в Messenger. Однократная вставка в активное поле без повторов; кнопка EN и запись до пяти минут сохранены."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.12.apk",
+  "sha256": "77534af3df218129de9574e440bb61bcc6ccc199e2d9420a2e63c7afeca3ef9b",
+  "size": 5127746,
+  "notes": "Новый компактный интерфейс: нижние вкладки «Голос», «Словарь», «Статистика», «Диагностика», «Настройки». Подключение, ключ и обновления — отдельными страницами. Убраны длинная лента и пробное поле. Эмодзи при включённой функции добавляются активнее."
 }

@@ -49,6 +49,10 @@ public class UpdateAndroidTest {
         if(v instanceof ViewGroup group)for(int i=0;i<group.getChildCount();i++){TextView t=find(group.getChildAt(i),text);if(t!=null)return t;}
         return null;
     }
+    private void openUpdates(MainActivity activity){
+        activity.getWindow().getDecorView().findViewWithTag("nav_4").performClick();
+        activity.getWindow().getDecorView().findViewWithTag("link_Обновления").performClick();
+    }
     @Test public void verifiedSameSignerAndNewerVersionIsAccepted()throws Exception{
         UpdateVerifier.verifyPackages(pkg(4,"app.wisp.voice","signer A"),pkg(5,"app.wisp.voice","signer A"),next());
     }
@@ -78,7 +82,7 @@ public class UpdateAndroidTest {
     @Test public void cachedNewReleaseIsVisibleWithoutAnyDownload(){
         RuntimeEnvironment.getApplication().getSharedPreferences("wisp_updates",0).edit().putString("latest",next().json()).commit();
         try(var activity=Robolectric.buildActivity(MainActivity.class).setup()){
-            View root=activity.get().getWindow().getDecorView();
+            openUpdates(activity.get());View root=activity.get().getWindow().getDecorView();
             assertNotNull(find(root,"Проверить обновления"));TextView install=find(root,"Скачать и обновить до 1.0.4");
             assertNotNull(install);assertEquals(View.VISIBLE,install.getVisibility());
             Bundle state=new Bundle();activity.saveInstanceState(state);assertEquals(next(),UpdateInfo.parse(state.getString("update_latest")));
@@ -89,7 +93,7 @@ public class UpdateAndroidTest {
         UpdateInfo update=new UpdateInfo(5,"1.0.4",28,next().url(),UpdateClient.hex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes)),1,"Тест обновления");
         context.getSharedPreferences("wisp_updates",0).edit().putString("latest",update.json()).commit();
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
-            var pm=context.getPackageManager();var shadow=Shadows.shadowOf(pm);
+            openUpdates(a.get());var pm=context.getPackageManager();var shadow=Shadows.shadowOf(pm);
             PackageInfo installed=pm.getPackageInfo(context.getPackageName(),PackageManager.GET_SIGNING_CERTIFICATES|PackageManager.GET_ACTIVITIES|PackageManager.GET_PROVIDERS|PackageManager.GET_META_DATA);
             installed.signingInfo=pkg(4,"app.wisp.voice","signer A").signingInfo;shadow.installPackage(installed);
             File dir=new File(context.getCacheDir(),"updates");assertTrue(dir.isDirectory()||dir.mkdirs());

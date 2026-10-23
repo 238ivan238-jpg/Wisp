@@ -22,6 +22,7 @@ import static org.junit.Assert.*;
 public class UiRenderingTest {
     @Before public void disableAutomaticNetworkChecks(){RuntimeEnvironment.getApplication().getSharedPreferences("wisp_updates",0).edit().putBoolean("auto_check",false).commit();}
     private void render(View view,String name,int height) throws Exception {
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         int width=1032;
         view.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(height,height==2300?View.MeasureSpec.EXACTLY:View.MeasureSpec.AT_MOST));
@@ -37,6 +38,18 @@ public class UiRenderingTest {
         try(var controller=Robolectric.buildActivity(MainActivity.class).setup()){
             render(controller.get().getWindow().getDecorView(),"setup.png",2300);
         }
+    }
+    @Test public void renderDictionarySettingsAndUpdates()throws Exception{
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            a.get().showSection(AppNavigation.DICTIONARY);render(a.get().getWindow().getDecorView(),"dictionary.png",2300);
+            a.get().showSection(AppNavigation.SETTINGS);render(a.get().getWindow().getDecorView(),"settings.png",2300);
+        }
+    }
+    @Test @Config(qualifiers="w393dp-h852dp-night-420dpi") public void renderDarkVoiceTab()throws Exception{
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){render(a.get().getWindow().getDecorView(),"voice-dark.png",2300);}
+    }
+    @Test public void renderDiagnosticsTab()throws Exception{
+        try(var a=Robolectric.buildActivity(DiagnosticsActivity.class).setup()){render(a.get().getWindow().getDecorView(),"diagnostics.png",2300);}
     }
     @Test @Config(qualifiers="w393dp-h852dp-notnight-420dpi") public void renderVoiceKeyboardOnPixelSizedDisplay() throws Exception {
         var controller=Robolectric.buildService(WispImeService.class).create();

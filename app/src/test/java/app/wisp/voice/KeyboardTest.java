@@ -51,7 +51,7 @@ public class KeyboardTest {
     }
     @Test public void settingsExposeUpdatesLanguageAndCleanupWithoutBlockingScreenshots(){
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
-            View root=a.get().getWindow().getDecorView();assertNotNull(find(root,"Проверить обновления"));
+            View root=a.get().getWindow().getDecorView();assertNull(find(root,"Проверить обновления"));assertNotNull(root.findViewWithTag("bottom_navigation"));
             assertNotNull(find(root,"Язык: русский + English (авто)"));assertTrue(((android.widget.Switch)find(root,"Чистый текст")).isChecked());
             assertFalse(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());
             find(root,"Язык: русский + English (авто)").performClick();assertNotNull(find(root,"Язык: русский"));

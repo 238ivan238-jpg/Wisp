@@ -19,14 +19,15 @@ public class StatsActivityTest {
     @Before public void setup(){RuntimeEnvironment.getApplication().getSharedPreferences("wisp_updates",0).edit().putBoolean("auto_check",false).commit();new UsageStats(RuntimeEnvironment.getApplication()).clear();}
     @Test public void settingsLinkOpensStatsScreen(){
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
-            find(a.get().getWindow().getDecorView(),"Открыть статистику").performClick();
+            a.get().getWindow().getDecorView().findViewWithTag("nav_2").performClick();
             assertEquals(StatsActivity.class.getName(),Shadows.shadowOf(a.get()).getNextStartedActivity().getComponent().getClassName());
         }
     }
     @Test public void screenShowsTotalsAndChartSupportsPeriodAndMetricChanges(){
         UsageStats stats=new UsageStats(RuntimeEnvironment.getApplication());long now=System.currentTimeMillis();stats.recordUse(now,60000);stats.recordInsertion(now,"Ну, API готов.","API готов.","clean",true);stats.recordFailure("limit");
         try(var a=Robolectric.buildActivity(StatsActivity.class).setup()){
-            View root=a.get().getWindow().getDecorView();assertNotNull(find(root,"Диктовок: 1\nВставлено слов: 2\nВремя записи: 0:01:00"));
+            View root=a.get().getWindow().getDecorView();assertNotNull(find(root,"1"));assertNotNull(find(root,"2"));assertNotNull(find(root,"0:01:00"));
+            find(root,"Слова-паразиты ▾").performClick();find(root,"Ошибки обработки ▾").performClick();
             assertNotNull(find(root,"ну — 1"));assertNotNull(find(root,"Лимит Groq — 1"));assertTrue(chart(root).getContentDescription().toString().startsWith("Диктовки"));
             find(root,"30 дней").performClick();root=a.get().getWindow().getDecorView();find(root,"Слова").performClick();root=a.get().getWindow().getDecorView();
             String accessible=chart(root).getContentDescription().toString();assertTrue(accessible.startsWith("Слова"));assertTrue(accessible.contains(UsageStats.day(now)+": 2"));assertEquals(30,accessible.chars().filter(c->c==';').count());
@@ -40,7 +41,7 @@ public class StatsActivityTest {
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertEquals(1,stats.snapshot().sessions());
             find(a.get().getWindow().getDecorView(),"Сбросить статистику").performClick();ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertEquals(0,stats.snapshot().sessions());assertNotNull(find(a.get().getWindow().getDecorView(),"Диктовок: 0\nВставлено слов: 0\nВремя записи: 0:00:00"));
+            assertEquals(0,stats.snapshot().sessions());assertNotNull(find(a.get().getWindow().getDecorView(),"0:00:00"));
         }
     }
     @Test public void yearViewSumsDailyCountsAndSurvivesRecreation(){
@@ -53,12 +54,11 @@ public class StatsActivityTest {
             android.os.Bundle state=new android.os.Bundle();a.saveInstanceState(state);assertEquals(365,state.getInt("days"));
         }
     }
-    @Test public void backArrowAndCaptionAreCenteredTogetherAndButtonReturnsToSettings(){
+    @Test public void bottomNavigationStaysOutsideTheScrollableStatsAndOpensSettings(){
         try(var a=Robolectric.buildActivity(StatsActivity.class).setup()){
             View root=a.get().getWindow().getDecorView();root.measure(View.MeasureSpec.makeMeasureSpec(1032,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(2300,View.MeasureSpec.EXACTLY));root.layout(0,0,1032,2300);
-            android.widget.LinearLayout back=root.findViewWithTag("stats_back");View arrow=back.getChildAt(0),caption=back.getChildAt(1);
-            assertEquals(arrow.getTop()+arrow.getHeight()/2.0,caption.getTop()+caption.getHeight()/2.0,1.0);
-            assertEquals(back.getWidth()/2.0,(arrow.getLeft()+caption.getRight())/2.0,1.0);back.performClick();assertTrue(a.get().isFinishing());
+            View navigation=root.findViewWithTag("bottom_navigation");assertFalse(navigation.getParent() instanceof android.widget.ScrollView);assertTrue(root.findViewWithTag("nav_2").isSelected());
+            root.findViewWithTag("nav_4").performClick();var intent=Shadows.shadowOf(a.get()).getNextStartedActivity();assertEquals(MainActivity.class.getName(),intent.getComponent().getClassName());assertEquals(AppNavigation.SETTINGS,intent.getIntExtra(AppNavigation.EXTRA_SECTION,-1));
         }
     }
 }

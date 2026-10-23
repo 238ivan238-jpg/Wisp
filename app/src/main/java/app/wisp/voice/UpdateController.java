@@ -40,9 +40,9 @@ final class UpdateController implements AutoCloseable {
         try{current=UpdateVerifier.installed(activity);}catch(Exception e){throw new IllegalStateException("Installed Wisp metadata unavailable",e);}
         currentCode=(int)current.getLongVersionCode();
         currentName=current.versionName;
-        LinearLayout card=Ui.card(activity);page.addView(card,Ui.fill(activity,-2));
-        card.addView(Ui.bold(activity,"Обновления · Wisp "+current.versionName,18,Ui.foreground(activity)));Ui.gap(card,8);
-        status=Ui.text(activity,"Проверяйте новые версии здесь — без поиска ссылок в чате.",13,Ui.muted(activity));card.addView(status);Ui.gap(card,12);
+        LinearLayout card=Ui.column(activity);page.addView(card,Ui.fill(activity,-2));
+        card.addView(Ui.text(activity,"Установлена версия "+current.versionName,14,Ui.muted(activity)));Ui.gap(card,8);
+        status=Ui.text(activity,"",13,Ui.muted(activity));card.addView(status);Ui.gap(card,12);
         check=Ui.button(activity,"Проверить обновления",false);card.addView(check,Ui.fill(activity,48));
         check.setOnClickListener(v->checkNow());
         install=Ui.button(activity,"Скачать и обновить",true);Ui.gap(card,8);card.addView(install,Ui.fill(activity,48));
@@ -51,7 +51,7 @@ final class UpdateController implements AutoCloseable {
         Switch auto=new Switch(activity);auto.setText("Проверять при открытии");auto.setTextColor(Ui.foreground(activity));auto.setTextSize(13);
         auto.setChecked(preferences.getBoolean("auto_check",true));auto.setPadding(0,Ui.dp(activity,10),0,Ui.dp(activity,10));card.addView(auto);
         auto.setOnCheckedChangeListener((button,on)->{preferences.edit().putBoolean("auto_check",on).apply();if(on)checkNow();});
-        Ui.gap(card,4);card.addView(Ui.text(activity,"Автопроверка — при открытии Wisp, не чаще раза в 6 часов. Скачивание начинается по кнопке. Установку подтверждает Android.",12,Ui.muted(activity)));
+        Ui.gap(card,4);card.addView(Ui.text(activity,"Проверка раз в 6 часов. Установку подтверждает Android.",12,Ui.muted(activity)));
         Ui.gap(page,16);
         String stored=state==null?preferences.getString("latest",""):state.getString("update_latest",preferences.getString("latest",""));
         if(!stored.isEmpty())try{latest=UpdateInfo.parse(stored);showLatest();}catch(Exception ignored){latest=null;}

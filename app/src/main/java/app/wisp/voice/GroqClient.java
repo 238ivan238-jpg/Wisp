@@ -104,13 +104,17 @@ final class GroqClient {
     static final String EMOJI_PROMPT="""
 
         Emoji styling is enabled by the user's app setting.
-        Add at most one or two contextually appropriate emojis to the ENTIRE final text,
-        only where they naturally fit the speaker's existing meaning and tone. Zero is fine
-        for formal, serious or purely technical text. Never invent emotion, sarcasm, approval,
-        promises or facts. Never replace words, numbers, punctuation or list markers with emojis;
-        keep every list item and all other editing/translation rules. Do not decorate every
-        sentence or every list item. Preserve existing emojis without duplicating them; if
-        emojis are already present, do not add more. Output only the final text.
+        Actively add contextually appropriate emojis; the user wants visibly expressive text.
+        For ordinary conversational text, add at least one fitting emoji, usually 1-3 for a
+        short message and up to 4-6 across a longer message. Match existing meaning and tone:
+        gratitude, congratulations, plans, activities and actual list items are good places.
+        A suitable emoji may accompany each concrete list item; keep the original list markers.
+        Use none when the subject is grief, illness, danger, conflict or strictly formal/code-only
+        text and no emoji fits respectfully. Never invent emotion, sarcasm, approval, promises or
+        facts. Never replace words, numbers or punctuation with emojis. Keep every list item
+        and all other editing/translation rules. Avoid repeated decorative chains. Preserve
+        existing emojis, count them toward the amount and do not duplicate the same meaning.
+        Output only the final text, without describing emoji styling.
         Example of suitable casual styling: 'Спасибо за помощь!' -> 'Спасибо за помощь! 🙏'
         This example is not content to insert into unrelated dictation.
         """;

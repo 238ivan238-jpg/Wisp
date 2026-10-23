@@ -14,15 +14,13 @@ public final class DiagnosticsActivity extends Activity {
     @Override protected void onResume(){super.onResume();render();}
     private void render(){
         ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.background(this));
-        scroll.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(i.getSystemWindowInsetLeft(),i.getSystemWindowInsetTop(),i.getSystemWindowInsetRight(),i.getSystemWindowInsetBottom());return i;});
-        LinearLayout page=Ui.column(this);int p=Ui.dp(this,20);page.setPadding(p,p,p,p);scroll.addView(page);setContentView(scroll);
-        Button back=Ui.button(this,"Настройки",false);page.addView(back,Ui.fill(this,48));back.setOnClickListener(v->finish());Ui.gap(page,20);
-        page.addView(Ui.bold(this,"Диагностика",28,Ui.foreground(this)));Ui.gap(page,12);
-        page.addView(Ui.text(this,"Журнал последних 200 событий: этапы диктовки, ответы Groq, вставка, обновления и сбои приложения. Есть время, версия, модель, HTTP-код и место ошибки в коде. Тексты, аудио, ключи и сообщения сервера не записываются.",14,Ui.muted(this)));Ui.gap(page,12);
+        LinearLayout page=Ui.column(this);int p=Ui.dp(this,20);page.setPadding(p,p,p,p);scroll.addView(page);setContentView(AppNavigation.wrap(this,scroll,AppNavigation.DIAGNOSTICS));
+        page.addView(Ui.bold(this,"Диагностика",26,Ui.foreground(this)));Ui.gap(page,12);
+        page.addView(Ui.text(this,"Логи без текстов диктовок, аудио и ключей.",13,Ui.muted(this)));Ui.gap(page,12);
         Button share=Ui.button(this,"Поделиться логами",true);page.addView(share,Ui.fill(this,48));share.setOnClickListener(v->{try{startActivity(Intent.createChooser(DiagnosticLog.shareIntent(this,log.export()),"Отправить логи Wisp"));}catch(Exception e){failed(e);}});Ui.gap(page,8);
         Button save=Ui.button(this,"Сохранить файл логов",false);page.addView(save,Ui.fill(this,48));save.setOnClickListener(v->{try{startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE,"Wisp-diagnostics.json"),SAVE_LOG);}catch(Exception e){failed(e);}});Ui.gap(page,12);
-        page.addView(Ui.text(this,"Автоматической отправки нет. Сохраните JSON-файл и прикрепите его к этому чату или выберите приложение в меню «Поделиться». События собираются после установки этой версии.",12,Ui.muted(this)));Ui.gap(page,20);
-        LinearLayout recent=Ui.card(this);page.addView(recent,Ui.fill(this,-2));recent.addView(Ui.bold(this,"Последние события",18,Ui.foreground(this)));Ui.gap(recent,8);
+        page.addView(Ui.text(this,"Прикрепите сохранённый JSON к чату для разбора ошибки.",12,Ui.muted(this)));Ui.gap(page,20);
+        LinearLayout recent=Ui.column(this);page.addView(recent,Ui.fill(this,-2));recent.addView(Ui.bold(this,"Последние события",18,Ui.foreground(this)));Ui.gap(recent,8);
         var events=log.events();if(events.length()==0)recent.addView(Ui.text(this,"Журнал пока пуст.",14,Ui.muted(this)));
         for(int i=events.length()-1;i>=Math.max(0,events.length()-12);i--){var entry=events.optJSONObject(i);if(entry==null)continue;
             String text=entry.optString("timeUtc")+"\n"+entry.optString("stage")+" · "+entry.optString("outcome");

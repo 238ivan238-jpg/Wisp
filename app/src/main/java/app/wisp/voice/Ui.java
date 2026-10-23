@@ -51,4 +51,9 @@ final class Ui {
     static LinearLayout.LayoutParams fill(Context c, int height) {
         return new LinearLayout.LayoutParams(-1, height < 0 ? height : dp(c,height));
     }
+    static void disclosure(LinearLayout parent,String title,android.view.View details){
+        Context c=parent.getContext();Button button=button(c,title+" ▾",false);parent.addView(button,fill(c,48));
+        details.setVisibility(android.view.View.GONE);parent.addView(details,fill(c,-2));
+        button.setOnClickListener(v->{boolean open=details.getVisibility()!=android.view.View.VISIBLE;details.setVisibility(open?android.view.View.VISIBLE:android.view.View.GONE);button.setText(title+(open?" ▴":" ▾"));});
+    }
 }
