@@ -43,4 +43,22 @@ public class StatsActivityTest {
             assertEquals(0,stats.snapshot().sessions());assertNotNull(find(a.get().getWindow().getDecorView(),"Диктовок: 0\nВставлено слов: 0\nВремя записи: 0:00:00"));
         }
     }
+    @Test public void yearViewSumsDailyCountsAndSurvivesRecreation(){
+        UsageStats stats=new UsageStats(RuntimeEnvironment.getApplication());java.time.LocalDate today=java.time.LocalDate.now();
+        for(int i=0;i<365;i++)stats.recordUse(today.minusDays(i).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),60000);
+        try(var a=Robolectric.buildActivity(StatsActivity.class).setup()){
+            find(a.get().getWindow().getDecorView(),"365 дней").performClick();View root=a.get().getWindow().getDecorView();assertNotNull(find(root,"По месяцам за 365 дней"));
+            String accessible=chart(root).getContentDescription().toString();assertTrue(accessible.contains("по месяцам за 365 дней"));
+            double sum=java.util.Arrays.stream(accessible.split("; ")).skip(1).mapToDouble(s->Double.parseDouble(s.substring(s.indexOf(": ")+2))).sum();assertEquals(365,sum,0);
+            android.os.Bundle state=new android.os.Bundle();a.saveInstanceState(state);assertEquals(365,state.getInt("days"));
+        }
+    }
+    @Test public void backArrowAndCaptionAreCenteredTogetherAndButtonReturnsToSettings(){
+        try(var a=Robolectric.buildActivity(StatsActivity.class).setup()){
+            View root=a.get().getWindow().getDecorView();root.measure(View.MeasureSpec.makeMeasureSpec(1032,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(2300,View.MeasureSpec.EXACTLY));root.layout(0,0,1032,2300);
+            android.widget.LinearLayout back=root.findViewWithTag("stats_back");View arrow=back.getChildAt(0),caption=back.getChildAt(1);
+            assertEquals(arrow.getTop()+arrow.getHeight()/2.0,caption.getTop()+caption.getHeight()/2.0,1.0);
+            assertEquals(back.getWidth()/2.0,(arrow.getLeft()+caption.getRight())/2.0,1.0);back.performClick();assertTrue(a.get().isFinishing());
+        }
+    }
 }

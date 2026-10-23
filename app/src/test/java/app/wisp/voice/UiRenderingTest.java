@@ -51,4 +51,9 @@ public class UiRenderingTest {
         for(int i=0;i<7;i++)for(int j=0;j<=i;j++)stats.recordUse(java.time.LocalDate.now().minusDays(i).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),10000);
         try(var controller=Robolectric.buildActivity(StatsActivity.class).setup()){render(controller.get().getWindow().getDecorView(),"statistics.png",2300);}
     }
+    @Test public void renderYearlyStatistics()throws Exception{
+        UsageStats stats=new UsageStats(RuntimeEnvironment.getApplication());for(int i=0;i<365;i++)stats.recordUse(java.time.LocalDate.now().minusDays(i).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),1000);
+        android.os.Bundle state=new android.os.Bundle();state.putInt("days",365);
+        try(var controller=Robolectric.buildActivity(StatsActivity.class).create(state).start().resume().visible()){render(controller.get().getWindow().getDecorView(),"statistics-year.png",2300);}
+    }
 }

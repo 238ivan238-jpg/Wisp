@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 
 /** Local aggregate counters only: no audio, transcripts, keys or arbitrary provider messages. */
 final class UsageStats {
+    static final int RETENTION_DAYS=365;
     private static final Object LOCK=new Object();
     private static final Pattern WORD=Pattern.compile("[\\p{L}\\p{N}]+(?:['’_-][\\p{L}\\p{N}]+)*");
     static final Map<String,String> ERRORS=Map.ofEntries(
@@ -45,10 +46,10 @@ final class UsageStats {
             JSONObject value=read();mutation.apply(value);
             JSONObject days=value.optJSONObject("days");
             if(days!=null){
-                String cutoff=LocalDate.now().minusDays(89).toString();List<String> keys=new ArrayList<>();days.keys().forEachRemaining(keys::add);Collections.sort(keys);
+                String cutoff=LocalDate.now().minusDays(RETENTION_DAYS-1).toString();List<String> keys=new ArrayList<>();days.keys().forEachRemaining(keys::add);Collections.sort(keys);
                 for(String key:keys)if(key.compareTo(cutoff)<0)days.remove(key);
                 keys.clear();days.keys().forEachRemaining(keys::add);Collections.sort(keys);
-                for(int i=0;i<keys.size()-90;i++)days.remove(keys.get(i));
+                for(int i=0;i<keys.size()-RETENTION_DAYS;i++)days.remove(keys.get(i));
             }
             prefs.edit().putString("counters",value.toString()).apply();
         }catch(Exception ignored){/* Statistics must not interrupt dictation. */}}
@@ -80,7 +81,7 @@ final class UsageStats {
         synchronized(LOCK){JSONObject value=read();Map<String,Day> days=new TreeMap<>();JSONObject raw=value.optJSONObject("days");
             if(raw!=null){Iterator<String> keys=raw.keys();while(keys.hasNext()){
                 String key=keys.next();JSONObject d=raw.optJSONObject(key);
-                if(d!=null&&key.compareTo(LocalDate.now().minusDays(89).toString())>=0)
+                if(d!=null&&key.compareTo(LocalDate.now().minusDays(RETENTION_DAYS-1).toString())>=0)
                     days.put(key,new Day(d.optLong("sessions"),d.optLong("words"),d.optLong("durationMs")));
             }}
             return new Snapshot(value.optLong("sessions"),value.optLong("words"),value.optLong("durationMs"),Map.copyOf(days),

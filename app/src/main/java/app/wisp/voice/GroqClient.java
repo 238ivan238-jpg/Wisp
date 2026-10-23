@@ -112,18 +112,38 @@ final class GroqClient {
         }
     }
     private final Transport transport;
-    GroqClient() { this(new HttpTransport()); }
-    GroqClient(Transport transport) { this.transport=transport; }
+    private final DiagnosticLog journal;
+    private final String session,mode;
+    private String lastModel="";
+    GroqClient() { this(new HttpTransport(),null,"","unknown"); }
+    GroqClient(Transport transport) { this(transport,null,"","unknown"); }
+    GroqClient(DiagnosticLog journal,String session,String mode){this(new HttpTransport(),journal,session,mode);}
+    GroqClient(Transport transport,DiagnosticLog journal,String session,String mode){this.transport=transport;this.journal=journal;this.session=session;this.mode=mode;}
     void cancel() { transport.cancel(); }
-    private JSONObject request(String path,String method,String key,String type,byte[] body) throws Exception {
+    private JSONObject request(String path,String method,String key,String type,byte[] body,String model) throws Exception {
+        DiagnosticLog.Stage stage=path.equals("/models")?DiagnosticLog.Stage.MODEL_LIST:path.equals("/audio/transcriptions")?DiagnosticLog.Stage.TRANSCRIPTION:processingStage();
+        long began=System.nanoTime();int status=0;
+        if(journal!=null)journal.request(session,stage,DiagnosticLog.Outcome.START,mode,model,0,0,null);
+        try{
         key=ApiKey.normalize(key);
         if (key.isEmpty()) throw new ApiException("Добавьте API-ключ Groq в приложении Wisp.");
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException();
         Response r=transport.send(path,method,key,type,body);
+        status=r.code();
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException();
         if(r.code()<200||r.code()>=300) throw apiError(r,key);
-        try { return new JSONObject(r.body()); } catch(Exception e) { throw new ApiException("Некорректный ответ Groq. Повторите запрос позже."); }
+        JSONObject result;try { result=new JSONObject(r.body()); } catch(Exception e) { throw new ApiException("Некорректный ответ Groq. Повторите запрос позже."); }
+        if(journal!=null)journal.request(session,stage,DiagnosticLog.Outcome.SUCCESS,mode,model,(System.nanoTime()-began)/1000000,status,null);
+        return result;
+        }catch(Exception e){
+            boolean cancelled=Thread.currentThread().isInterrupted()||e instanceof InterruptedIOException&&!(e instanceof java.net.SocketTimeoutException);
+            if(journal!=null)journal.request(session,stage,cancelled?DiagnosticLog.Outcome.CANCELLED:DiagnosticLog.Outcome.FAILURE,mode,model,(System.nanoTime()-began)/1000000,status,e);
+            throw e;
+        }
     }
+    private DiagnosticLog.Stage processingStage(){return "translate".equals(mode)?DiagnosticLog.Stage.TRANSLATION:DiagnosticLog.Stage.CLEANUP;}
+    void processingResult(String original,String result){if(journal!=null)journal.result(session,processingStage(),original.trim().equals(result.trim())?DiagnosticLog.Outcome.UNCHANGED:DiagnosticLog.Outcome.SUCCESS,mode,lastModel,UsageStats.words(original),UsageStats.words(result));}
+    void processingFallback(Exception e){if(journal!=null){journal.failure(session,processingStage(),mode,e);journal.event(session,processingStage(),DiagnosticLog.Outcome.FALLBACK,mode,0,-1,-1);}}
     private static ApiException apiError(Response response,String key) {
         String code="",type="",description="";
         try {
@@ -151,7 +171,7 @@ final class GroqClient {
         return new ApiException(response.code(),identifier,unavailable,message+suffix);
     }
     void checkKey(String key) throws Exception {
-        JSONObject r=request("/models","GET",key,null,null);
+        JSONObject r=request("/models","GET",key,null,null,"");
         JSONArray models=r.optJSONArray("data"); boolean whisper=false;
         if(models!=null) for(int i=0;i<models.length();i++) if(WHISPER.equals(models.getJSONObject(i).optString("id"))) whisper=true;
         if(!whisper) throw new ApiException("Ключ принят, но модель Whisper недоступна для этого аккаунта.");
@@ -178,7 +198,7 @@ final class GroqClient {
             while((count=in.read(buffer))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();out.write(buffer,0,count);}
         }
         out.write(("\r\n--"+boundary+"--\r\n").getBytes(StandardCharsets.UTF_8));
-        JSONObject r=request("/audio/transcriptions","POST",key,"multipart/form-data; boundary="+boundary,out.toByteArray());
+        JSONObject r=request("/audio/transcriptions","POST",key,"multipart/form-data; boundary="+boundary,out.toByteArray(),turbo?"whisper-large-v3-turbo":WHISPER);
         String text=r.optString("text","").trim();
         if(text.isEmpty()) throw new ApiException("Речь не распознана. Попробуйте говорить ближе к микрофону.");
         return text;
@@ -201,7 +221,7 @@ final class GroqClient {
             // Retry only a diagnosed model availability failure, never auth, limits,
             // generic forbidden access, malformed requests or incomplete generations.
             if(!first.unavailableModel)throw first;
-            JSONObject inventory=request("/models","GET",key,null,null);
+            JSONObject inventory=request("/models","GET",key,null,null,"");
             JSONArray models=inventory.optJSONArray("data");List<String> available=new ArrayList<>();
             if(models!=null)for(int i=0;i<models.length();i++) {
                 JSONObject model=models.optJSONObject(i);if(model!=null)available.add(model.optString("id",""));
@@ -220,12 +240,13 @@ final class GroqClient {
         return value.substring(0,Math.min(500,value.length()));
     }
     private String cleanWithModel(String text,String key,String vocabulary,String model,boolean translate) throws Exception {
+        lastModel=model;
         String data=new JSONObject().put("dictation",text).put("spelling_hints",spellingHints(vocabulary)).toString();
         JSONObject body=new JSONObject().put("model",model).put("temperature",0).put("max_completion_tokens",4096)
             .put("messages",new JSONArray().put(new JSONObject().put("role","system").put("content",translate?TRANSLATION_PROMPT:PROMPT))
                 .put(new JSONObject().put("role","user").put("content",data)));
         if(model.startsWith("openai/gpt-oss-"))body.put("reasoning_effort","low");
-        JSONObject r=request("/chat/completions","POST",key,"application/json; charset=utf-8",body.toString().getBytes(StandardCharsets.UTF_8));
+        JSONObject r=request("/chat/completions","POST",key,"application/json; charset=utf-8",body.toString().getBytes(StandardCharsets.UTF_8),model);
         JSONArray choices=r.optJSONArray("choices");
         if(choices==null||choices.length()==0) throw new ApiException("Groq не вернул обработанный текст.");
         JSONObject choice=choices.getJSONObject(0);

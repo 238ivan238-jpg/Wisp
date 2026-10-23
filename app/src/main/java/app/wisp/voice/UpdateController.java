@@ -22,6 +22,8 @@ import java.util.concurrent.Executors;
 final class UpdateController implements AutoCloseable {
     private final Activity activity;
     private final SharedPreferences preferences;
+    private final DiagnosticLog journal;
+    private String trace=DiagnosticLog.session();
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final int currentCode;
     private final String currentName;
@@ -32,7 +34,8 @@ final class UpdateController implements AutoCloseable {
     private boolean busy,closed,awaitingPermission;
 
     UpdateController(Activity activity,LinearLayout page,Bundle state){
-        this.activity=activity;preferences=activity.getSharedPreferences("wisp_updates",Context.MODE_PRIVATE);
+        this.activity=activity;preferences=activity.getSharedPreferences("wisp_updates",Context.MODE_PRIVATE);journal=new DiagnosticLog(activity);
+        if(state!=null){String saved=state.getString("update_trace","");if(saved.matches("[a-f0-9-]{36}"))trace=saved;}
         PackageInfo current;
         try{current=UpdateVerifier.installed(activity);}catch(Exception e){throw new IllegalStateException("Installed Wisp metadata unavailable",e);}
         currentCode=(int)current.getLongVersionCode();
@@ -70,7 +73,7 @@ final class UpdateController implements AutoCloseable {
         if(preferences.getBoolean("auto_check",true)&&!busy
             &&(preferences.getInt("checked_version",0)!=currentCode||System.currentTimeMillis()-preferences.getLong("checked_at",0)>21600000L))checkNow();
     }
-    void save(Bundle out){if(latest!=null)out.putString("update_latest",latest.json());out.putBoolean("update_permission",awaitingPermission);}
+    void save(Bundle out){if(latest!=null)out.putString("update_latest",latest.json());out.putBoolean("update_permission",awaitingPermission);out.putString("update_trace",trace);}
     String versionName(){return currentName;}
     private File directory(){return new File(activity.getCacheDir(),"updates");}
     private void post(Runnable action){activity.runOnUiThread(()->{if(!closed&&!activity.isDestroyed())action.run();});}
@@ -87,38 +90,47 @@ final class UpdateController implements AutoCloseable {
     }
     private void checkNow(){
         if(busy||closed)return;controls(true);report("Проверяем обновления…",true);client=new UpdateClient();final UpdateClient operation=client;
+        trace=DiagnosticLog.session();final String operationTrace=trace;journal.event(operationTrace,DiagnosticLog.Stage.UPDATE_CHECK,DiagnosticLog.Outcome.START,"unknown",0,-1,-1);
         worker.submit(()->{
             try{
                 UpdateInfo info=operation.check();
+                journal.event(operationTrace,DiagnosticLog.Stage.UPDATE_CHECK,DiagnosticLog.Outcome.SUCCESS,"unknown",0,-1,-1);
                 post(()->{latest=info;preferences.edit().putString("latest",info.json()).putLong("checked_at",System.currentTimeMillis())
                     .putInt("checked_version",currentCode).apply();controls(false);showLatest();});
-            }catch(Exception e){post(()->{controls(false);report(error(e),false);});}
+            }catch(Exception e){journal.request(operationTrace,DiagnosticLog.Stage.UPDATE_CHECK,Thread.currentThread().isInterrupted()?DiagnosticLog.Outcome.CANCELLED:DiagnosticLog.Outcome.FAILURE,"unknown","",0,0,e);post(()->{controls(false);report(error(e),false);});}
         });
     }
     private void beginUpdate(){
         if(busy||closed||latest==null||latest.versionCode()<=currentCode||latest.minSdk()>Build.VERSION.SDK_INT)return;
         final UpdateInfo info=latest;controls(true);report("Скачиваем обновление…",true);client=new UpdateClient();final UpdateClient operation=client;
+        final String operationTrace=trace;journal.event(operationTrace,DiagnosticLog.Stage.UPDATE_DOWNLOAD,DiagnosticLog.Outcome.START,"unknown",0,-1,-1);
         worker.submit(()->{
+            DiagnosticLog.Stage stage=DiagnosticLog.Stage.UPDATE_DOWNLOAD;
             try{
                 File file=operation.download(info,directory(),percent->post(()->status.setText("Скачиваем обновление: "+percent+"%")));
+                journal.event(operationTrace,stage,DiagnosticLog.Outcome.SUCCESS,"unknown",0,-1,-1);stage=DiagnosticLog.Stage.UPDATE_VERIFY;
+                journal.event(operationTrace,stage,DiagnosticLog.Outcome.START,"unknown",0,-1,-1);
                 post(()->status.setText("Проверяем файл и подпись…"));
                 try{UpdateVerifier.verify(activity,file,info);}catch(Exception e){file.delete();throw e;}
+                journal.event(operationTrace,stage,DiagnosticLog.Outcome.SUCCESS,"unknown",0,-1,-1);
                 post(()->{controls(false);openInstaller(file);});
-            }catch(Exception e){post(()->{controls(false);report(error(e),false);});}
+            }catch(Exception e){journal.request(operationTrace,stage,Thread.currentThread().isInterrupted()?DiagnosticLog.Outcome.CANCELLED:DiagnosticLog.Outcome.FAILURE,"unknown","",0,0,e);post(()->{controls(false);report(error(e),false);});}
         });
     }
     private void openInstaller(File file){
         try{
             if(!activity.getPackageManager().canRequestPackageInstalls()){
                 awaitingPermission=true;
+                journal.event(trace,DiagnosticLog.Stage.UPDATE_INSTALL,DiagnosticLog.Outcome.PERMISSION_REQUIRED,"unknown",0,-1,-1);
                 report("Разрешите Wisp устанавливать обновления на следующем экране Android. После возврата установка продолжится.",true);
                 activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+activity.getPackageName())));
                 return;
             }
             report("Файл проверен. Подтвердите обновление в окне Android.",true);install.setText("Открыть установку ещё раз");
             activity.startActivity(installerIntent(activity,file));
-        }catch(android.content.ActivityNotFoundException e){awaitingPermission=false;report("На устройстве не найден системный установщик или экран разрешения.",false);}
-        catch(SecurityException e){awaitingPermission=false;report("Android запретил установку обновления. Проверьте разрешение установки для Wisp.",false);}
+            journal.event(trace,DiagnosticLog.Stage.UPDATE_INSTALL,DiagnosticLog.Outcome.HANDED_TO_ANDROID,"unknown",0,-1,-1);
+        }catch(android.content.ActivityNotFoundException e){journal.failure(trace,DiagnosticLog.Stage.UPDATE_INSTALL,"unknown",e);awaitingPermission=false;report("На устройстве не найден системный установщик или экран разрешения.",false);}
+        catch(SecurityException e){journal.failure(trace,DiagnosticLog.Stage.UPDATE_INSTALL,"unknown",e);awaitingPermission=false;report("Android запретил установку обновления. Проверьте разрешение установки для Wisp.",false);}
     }
     static Intent installerIntent(Context context,File apk){
         Uri uri=FileProvider.getUriForFile(context,context.getPackageName()+".updates",apk);

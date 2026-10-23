@@ -45,7 +45,7 @@ public final class MainActivity extends Activity {
         Ui.gap(page,24);
         updates=new UpdateController(this,page,state);
         LinearLayout setup=Ui.card(this); page.addView(setup,Ui.fill(this,-2));
-        setup.addView(Ui.bold(this,"01   Подготовьте клавиатуру",18,Ui.foreground(this))); Ui.gap(setup,10);
+        setup.addView(Ui.bold(this,"01   Gboard для печати, Wisp для голоса",18,Ui.foreground(this))); Ui.gap(setup,10);
         readiness=Ui.text(this,"",13,Ui.muted(this)); setup.addView(readiness); Ui.gap(setup,16);
         Button mic=Ui.button(this,"Разрешить микрофон",true); setup.addView(mic,Ui.fill(this,50));
         mic.setOnClickListener(v->{
@@ -54,6 +54,12 @@ public final class MainActivity extends Activity {
             } else requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},7);
         });
         Ui.gap(setup,10);
+        Button companion=Ui.button(this,"Включить микрофон поверх Gboard",true);companion.setEnabled(android.os.Build.VERSION.SDK_INT>=33);setup.addView(companion,Ui.fill(this,-2));
+        companion.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));Ui.gap(setup,10);
+        Button gboard=Ui.button(this,"Выбрать Gboard",false);setup.addView(gboard,Ui.fill(this,48));gboard.setOnClickListener(v->getSystemService(InputMethodManager.class).showInputMethodPicker());Ui.gap(setup,8);
+        setup.addView(Ui.text(this,"Android 13+: включите службу «Wisp · микрофон поверх Gboard» в специальных возможностях, затем выберите Gboard. Печатайте и редактируйте как обычно; микрофон Wisp появляется у активного поля. Запись и вставка — по нажатию, настройки — по удержанию.",12,Ui.muted(this)));Ui.gap(setup,8);
+        setup.addView(Ui.text(this,"Если Android пишет «Ограниченная настройка»: откройте сведения о приложении Wisp → меню ⋮ → «Разрешить ограниченные настройки», затем вернитесь к включению службы. Это действие выполняется вручную в Android.",12,Ui.muted(this)));Ui.gap(setup,16);
+        setup.addView(Ui.bold(this,"Прежний вариант: клавиатура Wisp",14,Ui.foreground(this)));Ui.gap(setup,8);
         Button enable=Ui.button(this,"Включить Wisp в настройках Android",false); setup.addView(enable,Ui.fill(this,-2));
         enable.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
         Ui.gap(setup,10);
@@ -91,21 +97,24 @@ public final class MainActivity extends Activity {
             String value=ApiKey.normalize(keyField.getText().toString());
             if(value.isEmpty()) { report("Введите новый ключ или нажмите «Удалить ключ».",false); return; }
             try { settings.saveKey(value); keyField.setText(""); keyField.setHint("Ключ сохранён · введите новый для замены"); report("Ключ зашифрован и сохранён на устройстве.",true); refresh(); }
-            catch(Exception e) { report("Не удалось защитить ключ в Android Keystore. Ключ не сохранён.",false); }
+            catch(Exception e) {new DiagnosticLog(this).failure(DiagnosticLog.session(),DiagnosticLog.Stage.KEY_STORAGE,settings.mode(),e);report("Не удалось защитить ключ в Android Keystore. Ключ не сохранён.",false); }
         });
         check.setOnClickListener(v->{
             String entered=ApiKey.normalize(keyField.getText().toString());
             boolean translation="translate".equals(settings.mode());
+            DiagnosticLog journal=new DiagnosticLog(this);String trace=DiagnosticLog.session(),selectedMode=translation?"translate":"clean";
+            journal.event(trace,DiagnosticLog.Stage.KEY_CHECK,DiagnosticLog.Outcome.START,selectedMode,0,-1,-1);
             check.setEnabled(false); report("Проверяем доступ к Groq…",true);
             worker.submit(()->{
                 String message; boolean ok;
                 try {
                     String key=entered.isEmpty()?settings.readKey():entered;
-                    GroqClient client=new GroqClient();client.checkKey(key);
+                    GroqClient client=new GroqClient(journal,trace,selectedMode);client.checkKey(key);
                     if(translation)client.translate("Проверка подключения.",key,"");else client.clean("Проверка подключения.",key);
                     message=entered.isEmpty()?"Сохранённый ключ работает, Whisper доступен. Текстовая модель ответила на тестовую фразу."
                         :"Ключ работает, текстовая модель ответила. Нажмите «Сохранить», чтобы использовать ключ для диктовки."; ok=true;
-                } catch(Exception e) { message=GroqClient.friendlyError(e); ok=false; }
+                    journal.event(trace,DiagnosticLog.Stage.KEY_CHECK,DiagnosticLog.Outcome.SUCCESS,selectedMode,0,-1,-1);
+                } catch(Exception e) { journal.failure(trace,DiagnosticLog.Stage.KEY_CHECK,selectedMode,e);message=GroqClient.friendlyError(e); ok=false; }
                 String result=message; boolean success=ok;
                 runOnUiThread(()->{ if(!isDestroyed()) { check.setEnabled(true); report(result,success); } });
             });
@@ -142,9 +151,12 @@ public final class MainActivity extends Activity {
         LinearLayout usage=Ui.card(this);page.addView(usage,Ui.fill(this,-2));usage.addView(Ui.bold(this,"Статистика использования",18,Ui.foreground(this)));Ui.gap(usage,8);
         usage.addView(Ui.text(this,"Слова, время, диктовки по дням, графики, удалённые слова-паразиты и причины сбоев. Только локальные счётчики — без истории текстов и аудио.",13,Ui.muted(this)));Ui.gap(usage,12);
         Button statistics=Ui.button(this,"Открыть статистику",false);usage.addView(statistics,Ui.fill(this,48));statistics.setOnClickListener(v->startActivity(new Intent(this,StatsActivity.class)));Ui.gap(page,16);
+        LinearLayout diagnostic=Ui.card(this);page.addView(diagnostic,Ui.fill(this,-2));diagnostic.addView(Ui.bold(this,"Диагностика ошибок",18,Ui.foreground(this)));Ui.gap(diagnostic,8);
+        diagnostic.addView(Ui.text(this,"Журнал этапов и технических ошибок без текстов, аудио и ключей. Сохраните файл или поделитесь им, чтобы передать разработчику.",13,Ui.muted(this)));Ui.gap(diagnostic,12);
+        Button logs=Ui.button(this,"Логи и диагностика",false);diagnostic.addView(logs,Ui.fill(this,48));logs.setOnClickListener(v->startActivity(new Intent(this,DiagnosticsActivity.class)));Ui.gap(page,16);
         LinearLayout test=Ui.card(this);page.addView(test,Ui.fill(this,-2));
         test.addView(Ui.bold(this,"Попробуйте прямо здесь",18,Ui.foreground(this)));Ui.gap(test,8);
-        test.addView(Ui.text(this,"Коснитесь поля и выберите Wisp: появится плавающий микрофон. Нажмите для начала и остановки записи — текст вставится сам. Удерживайте значок для настроек; перетаскивайте для перемещения.",13,Ui.muted(this)));
+        test.addView(Ui.text(this,"Коснитесь поля: с включённым помощником микрофон Wisp появится рядом с Gboard. Печатайте обычной клавиатурой или нажмите микрофон для диктовки. Повторное нажатие останавливает запись; текст вставится в позицию курсора. Удерживайте значок для настроек; перетаскивайте для перемещения.",13,Ui.muted(this)));
         EditText sandbox=new EditText(this);sandbox.setTextColor(Ui.foreground(this));sandbox.setHintTextColor(Ui.muted(this));sandbox.setHint("Здесь появятся ваши слова…");
         sandbox.setMinLines(3);sandbox.setGravity(android.view.Gravity.TOP);sandbox.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         sandbox.setSaveEnabled(false);test.addView(sandbox,Ui.fill(this,-2));
@@ -157,8 +169,9 @@ public final class MainActivity extends Activity {
     private void refresh() {
         if(readiness==null)return;
         boolean mic=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
-        boolean ime=getSystemService(InputMethodManager.class).getEnabledInputMethodList().stream().anyMatch(i->i.getPackageName().equals(getPackageName()));
-        readiness.setText((mic?"✓":"○")+" Микрофон     "+(ime?"✓":"○")+" Клавиатура     "+(settings.hasKey()?"✓":"○")+" API-ключ");
+        boolean companion=getSystemService(android.view.accessibility.AccessibilityManager.class).getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK).stream()
+            .anyMatch(i->i.getResolveInfo()!=null&&i.getResolveInfo().serviceInfo!=null&&(getPackageName()+".GboardCompanionService").equals(i.getResolveInfo().serviceInfo.name));
+        readiness.setText((mic?"✓":"○")+" Микрофон     "+(companion?"✓":"○")+" Помощник     "+(settings.hasKey()?"✓":"○")+" API-ключ");
     }
     @Override protected void onResume(){super.onResume();refresh();if(updates!=null)updates.onResume();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);if(updates!=null)updates.save(state);}

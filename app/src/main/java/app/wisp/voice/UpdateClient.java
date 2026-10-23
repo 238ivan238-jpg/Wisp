@@ -10,6 +10,10 @@ import java.util.function.IntConsumer;
 
 /** No Groq credentials or dictation data enter this client. */
 final class UpdateClient {
+    static final class HttpException extends IOException {
+        final int status;
+        HttpException(int status){super("Сервер обновлений недоступен (HTTP "+status+"). Попробуйте позже.");this.status=status;}
+    }
     interface Transport {
         InputStream open(String url) throws IOException;
         default void cancel() {}
@@ -78,7 +82,7 @@ final class UpdateClient {
                     String next=connection.getHeaderField("Location");connection.disconnect();active=null;
                     if(next==null)throw new IOException("Сервер обновлений вернул пустой адрес.");address=new URL(url,next).toString();continue;
                 }
-                if(status!=200){connection.disconnect();active=null;throw new IOException("Сервер обновлений недоступен (HTTP "+status+"). Попробуйте позже.");}
+                if(status!=200){connection.disconnect();active=null;throw new HttpException(status);}
                 final InputStream stream;
                 try{stream=connection.getInputStream();}catch(IOException e){connection.disconnect();active=null;throw e;}
                 return new FilterInputStream(stream){@Override public void close()throws IOException{try{super.close();}finally{connection.disconnect();if(active==connection)active=null;}}};

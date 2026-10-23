@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 7,
-  "versionName": "1.0.6",
+  "versionCode": 8,
+  "versionName": "1.0.7",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.6.apk",
-  "sha256": "dec553eeadaf69926c8bfca03603793b557708e06b4807221ade204e3075599e",
-  "size": 5074038,
-  "notes": "Добавлены локальная статистика с графиками за 7/30 дней, счётчики слов и времени, частые удалённые слова-паразиты и причины сбоев. В настройках появился перевод диктовки на английский. Основной режим — «Чистый текст»."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.7.apk",
+  "sha256": "0487ab82adcbd99ac6d073cf3e57e8d58116ca86c13afac112db099c64c44fe0",
+  "size": 5118914,
+  "notes": "Gboard остаётся основной клавиатурой: включите помощник Wisp в специальных возможностях Android 13+. Добавлены экспорт логов ошибок, график за 365 дней и исправлен возврат из статистики."
 }

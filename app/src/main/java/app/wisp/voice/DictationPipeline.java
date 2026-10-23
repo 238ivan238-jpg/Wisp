@@ -16,9 +16,11 @@ final class DictationPipeline {
         if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();
         try {
             String text="translate".equals(mode)?api.translate(original,key,vocabulary):api.clean(original,key,vocabulary);
+            api.processingResult(original,text);
             return new Result(original,text,"");
         } catch(Exception e) {
             if(Thread.currentThread().isInterrupted()||e instanceof InterruptedIOException && !(e instanceof java.net.SocketTimeoutException))throw e;
+            api.processingFallback(e);
             String task="translate".equals(mode)?"Перевод не удался.":"Очистка не удалась.";
             return new Result(original,original,task+" Сохранён исходный текст. "+GroqClient.friendlyError(e),GroqClient.failureCategory(e));
         }

@@ -37,10 +37,10 @@ public class UsageStatsTest {
         assertFalse(persisted.contains("Секретный"));assertFalse(persisted.contains("12345"));assertFalse(persisted.contains("credential"));
         assertEquals(Map.of("other",1L),stats.snapshot().errors());
     }
-    @Test public void keepsNinetyDailyBucketsAndAllTimeTotals(){
-        LocalDate today=LocalDate.now();for(int i=0;i<100;i++)stats.recordUse(today.minusDays(i).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),1000);
-        var s=stats.snapshot();assertEquals(100,s.sessions());assertEquals(100000,s.durationMs());assertEquals(90,s.days().size());
-        assertTrue(s.days().containsKey(today.minusDays(89).toString()));assertFalse(s.days().containsKey(today.minusDays(90).toString()));
+    @Test public void keepsFullYearOfDailyBucketsAndAllTimeTotals(){
+        LocalDate today=LocalDate.now();for(int i=0;i<400;i++)stats.recordUse(today.minusDays(i).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),1000);
+        var s=stats.snapshot();assertEquals(400,s.sessions());assertEquals(400000,s.durationMs());assertEquals(365,s.days().size());
+        assertTrue(s.days().containsKey(today.minusDays(364).toString()));assertFalse(s.days().containsKey(today.minusDays(365).toString()));
     }
     @Test public void dayBoundaryUsesPhoneTimezone(){
         TimeZone original=TimeZone.getDefault();try{
