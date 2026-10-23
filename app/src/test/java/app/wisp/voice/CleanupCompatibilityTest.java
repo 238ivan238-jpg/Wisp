@@ -32,7 +32,7 @@ public class CleanupCompatibilityTest {
             JSONObject data=new JSONObject(body.getJSONArray("messages").getJSONObject(1).getString("content"));
             assertEquals("Ну, завтра deploy.",data.getString("dictation"));assertEquals("GitHub",data.getString("spelling_hints"));
             return new GroqClient.Response(200,COMPLETE);
-        });assertEquals("Завтра deploy.",c.clean("Ну, завтра deploy.","key","clean","GitHub"));assertEquals(3,calls.get());
+        });assertEquals("Завтра deploy.",c.clean("Ну, завтра deploy.","key","GitHub"));assertEquals(3,calls.get());
     }
     @Test public void decommissionedModelWith400CanFallBack() throws Exception {
         AtomicInteger chats=new AtomicInteger();
@@ -65,7 +65,7 @@ public class CleanupCompatibilityTest {
                 :new GroqClient.Response(404,MISSING);
         });
         GroqClient.ApiException e=assertThrows(GroqClient.ApiException.class,()->c.clean("raw","key"));
-        assertEquals(2,calls.get());assertTrue(e.getMessage().contains("Без ИИ"));
+        assertEquals(2,calls.get());assertTrue(e.getMessage().contains("выключите «Чистый текст»"));
     }
     @Test public void rateLimitedFallbackStopsWithoutTryingFurtherModels() {
         AtomicInteger chats=new AtomicInteger();

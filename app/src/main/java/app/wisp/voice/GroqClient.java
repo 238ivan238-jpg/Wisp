@@ -27,6 +27,9 @@ final class GroqClient {
         - Fix punctuation, capitalization, grammar, word agreement and obvious speech-recognition
           slips when context makes the intended wording clear. Repair broken spoken syntax into
           natural written sentences. Do not merely punctuate a raw transcript.
+        - Use sentence boundaries, question marks and paragraph breaks to convey the phrasing
+          indicated by the words and context. Preserve the speaker's tone; do not invent emotion,
+          add emphasis or turn uncertain statements into confident ones.
         - Remove nonsemantic filler (um, uh, э-э, ну, как бы, получается, короче), stutters,
           accidental repetitions and abandoned sentence starts. Keep these words when they carry
           meaning, and keep deliberate emphasis or repetition.
@@ -160,13 +163,10 @@ final class GroqClient {
         out.write(("--"+b+"\r\nContent-Disposition: form-data; name=\""+name+"\"\r\n\r\n"+value+"\r\n").getBytes(StandardCharsets.UTF_8));
     }
     String clean(String text,String key) throws Exception {
-        return clean(text,key,"clean");
+        return clean(text,key,"");
     }
-    String clean(String text,String key,String mode) throws Exception {
-        return clean(text,key,mode,"");
-    }
-    String clean(String text,String key,String mode,String vocabulary) throws Exception {
-        try { return cleanWithModel(text,key,mode,vocabulary,CLEANER); }
+    String clean(String text,String key,String vocabulary) throws Exception {
+        try { return cleanWithModel(text,key,vocabulary,CLEANER); }
         catch(ApiException first) {
             // Retry only a diagnosed model availability failure, never auth, limits,
             // generic forbidden access, malformed requests or incomplete generations.
@@ -179,25 +179,20 @@ final class GroqClient {
             ApiException last=first;
             for(String candidate:CLEANERS) {
                 if(candidate.equals(CLEANER)||!available.contains(candidate))continue;
-                try{return cleanWithModel(text,key,mode,vocabulary,candidate);}
+                try{return cleanWithModel(text,key,vocabulary,candidate);}
                 catch(ApiException e){if(!e.unavailableModel)throw e;last=e;}
             }
-            throw new ApiException(last.status,last.providerCode,true,last.getMessage()+" Разрешите текстовую модель в аккаунте Groq или выберите режим «Без ИИ».");
+            throw new ApiException(last.status,last.providerCode,true,last.getMessage()+" Разрешите текстовую модель в аккаунте Groq или выключите «Чистый текст» в настройках Wisp для ввода без обработки.");
         }
     }
     private static String spellingHints(String vocabulary){
         String value=vocabulary==null?"":vocabulary.strip();
         return value.substring(0,Math.min(500,value.length()));
     }
-    private String cleanWithModel(String text,String key,String mode,String vocabulary,String model) throws Exception {
-        String extra=switch(mode) {
-            case "message" -> "\nMode: format as readable message paragraphs, with lists for enumerations. Keep the author's tone; do not invent a greeting or signature.";
-            case "notes" -> "\nMode: format as bullet points, or a numbered list for ordered items. Do not summarize; keep all details, their order and any introduction or closing sentence.";
-            default -> "\nMode: natural written text with automatic lists for actual enumerations and paragraphs for prose.";
-        };
+    private String cleanWithModel(String text,String key,String vocabulary,String model) throws Exception {
         String data=new JSONObject().put("dictation",text).put("spelling_hints",spellingHints(vocabulary)).toString();
         JSONObject body=new JSONObject().put("model",model).put("temperature",0).put("max_completion_tokens",4096)
-            .put("messages",new JSONArray().put(new JSONObject().put("role","system").put("content",PROMPT+extra))
+            .put("messages",new JSONArray().put(new JSONObject().put("role","system").put("content",PROMPT))
                 .put(new JSONObject().put("role","user").put("content",data)));
         if(model.startsWith("openai/gpt-oss-"))body.put("reasoning_effort","low");
         JSONObject r=request("/chat/completions","POST",key,"application/json; charset=utf-8",body.toString().getBytes(StandardCharsets.UTF_8));

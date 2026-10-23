@@ -68,14 +68,7 @@ public class GroqClientTest {
             assertEquals(dictated,data.getString("dictation"));assertEquals(vocabulary,data.getString("spelling_hints"));
             return new GroqClient.Response(200,new JSONObject().put("choices",new org.json.JSONArray().put(new JSONObject()
                 .put("message",new JSONObject().put("content",dictated)))).toString());
-        });assertEquals(dictated,client.clean(dictated,"k","clean",vocabulary));
-    }
-    @Test public void messageAndNotesModesPreserveBaseRules() throws Exception {
-        for(String mode:new String[]{"message","notes"})new GroqClient((p,m,k,t,b)->{
-            String prompt=new JSONObject(new String(b,StandardCharsets.UTF_8)).getJSONArray("messages").getJSONObject(0).getString("content");
-            assertTrue(prompt.contains("Do not translate"));assertTrue(prompt.contains(mode.equals("notes")?"bullet points":"message paragraphs"));
-            return new GroqClient.Response(200,"{\"choices\":[{\"message\":{\"content\":\"Ready\"}}]}");
-        }).clean("raw","key",mode);
+        });assertEquals(dictated,client.clean(dictated,"k",vocabulary));
     }
     @Test public void rateLimitDoesNotExposeServerBodyOrKey() throws Exception {
         GroqClient c=new GroqClient((p,m,k,t,b)->new GroqClient.Response(429,"private provider details with secret-test"));

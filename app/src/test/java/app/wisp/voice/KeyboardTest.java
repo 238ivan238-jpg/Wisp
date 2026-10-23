@@ -52,9 +52,32 @@ public class KeyboardTest {
     @Test public void settingsExposeUpdatesLanguageAndCleanupWithoutBlockingScreenshots(){
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
             View root=a.get().getWindow().getDecorView();assertNotNull(find(root,"Проверить обновления"));
-            assertNotNull(find(root,"Язык: русский + English (авто)"));assertNotNull(find(root,"Обработка: умный текст"));
+            assertNotNull(find(root,"Язык: русский + English (авто)"));assertTrue(((android.widget.Switch)find(root,"Чистый текст")).isChecked());
             find(root,"Язык: русский + English (авто)").performClick();assertNotNull(find(root,"Язык: русский"));
             assertEquals(0,a.get().getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE);
+        }
+    }
+    @Test public void formerMessageAndNotesSettingsUseTheSingleEditorOnUpgrade(){
+        var context=RuntimeEnvironment.getApplication();
+        for(String old:new String[]{"message","notes","clean"}){
+            context.getSharedPreferences("wisp_private",0).edit().putString("mode",old).commit();
+            assertEquals("clean",new SecureSettings(context).mode());
+            try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+                View root=a.get().getWindow().getDecorView();
+                assertTrue(((android.widget.Switch)find(root,"Чистый текст")).isChecked());
+                for(String removed:new String[]{"Обработка: сообщение","Обработка: список","Обработка: умный текст","Письмо","Заметка"})assertNull(find(root,removed));
+            }
+        }
+    }
+    @Test public void cleanupTogglePersistsAndPreservesAnExplicitlyDisabledEditor(){
+        var context=RuntimeEnvironment.getApplication();context.getSharedPreferences("wisp_private",0).edit().putString("mode","raw").commit();
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            android.widget.Switch toggle=(android.widget.Switch)find(a.get().getWindow().getDecorView(),"Чистый текст");
+            assertFalse(toggle.isChecked());toggle.performClick();assertEquals("clean",new SecureSettings(context).mode());
+            toggle.performClick();assertEquals("raw",new SecureSettings(context).mode());
+        }
+        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            assertFalse(((android.widget.Switch)find(a.get().getWindow().getDecorView(),"Чистый текст")).isChecked());
         }
     }
     @Test public void onlyMicrophoneIsVisibleWhenIdle(){

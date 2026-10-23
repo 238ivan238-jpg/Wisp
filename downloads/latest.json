@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 5,
-  "versionName": "1.0.4",
+  "versionCode": 6,
+  "versionName": "1.0.5",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.4.apk",
-  "sha256": "7d1bb9b8ea1a56bb5f55e8bdbbe587810e9d57180fd2984d224c0644712b299c",
-  "size": 5050650,
-  "notes": "Улучшена обработка диктовки: оговорки, грамматика и автоматические списки. Убрана служебная фраза из подсказки распознавания. Русский и English сохраняются без перевода; словарь учитывается при обработке."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.5.apk",
+  "sha256": "a8cba30a9ac9cd078befceea5bc2ce372b12c6543d29f99ce2fcad89a3725536",
+  "size": 5050054,
+  "notes": "Один основной режим «Чистый текст»: исправления, пунктуация, слова-паразиты и автоматические списки. Отдельные режимы письма и заметки убраны; старые настройки переходят на общую обработку."
 }
