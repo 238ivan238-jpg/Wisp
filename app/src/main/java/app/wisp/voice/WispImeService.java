@@ -45,7 +45,7 @@ public final class WispImeService extends InputMethodService {
     private int safeTop,safeBottom,safeLeft,safeRight;
     private FrameLayout root;
     private TextView status;
-    private VoiceBubble mic;
+    private VoiceControls mic;
     @Override public void onCreate(){
         super.onCreate();settings=new SecureSettings(this);stats=new UsageStats(this);journal=new DiagnosticLog(this);
         File[] stale=getCacheDir().listFiles((dir,name)->name.startsWith("wisp-audio-")&&name.endsWith(".m4a"));
@@ -66,7 +66,7 @@ public final class WispImeService extends InputMethodService {
         root.setMinimumHeight(getResources().getDisplayMetrics().heightPixels);
         root.setClipChildren(false);root.setClipToPadding(false);
         safeBottom=Ui.dp(this,32);
-        mic=new VoiceBubble(this);root.addView(mic,new FrameLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,64)));
+        mic=new VoiceControls(this);root.addView(mic,new FrameLayout.LayoutParams(Ui.dp(this,VoiceControls.WIDTH_DP),Ui.dp(this,VoiceControls.HEIGHT_DP)));
         status=Ui.text(this,"",13,Ui.foreground(this));status.setMaxLines(3);status.setGravity(Gravity.CENTER);
         status.setPadding(Ui.dp(this,12),Ui.dp(this,8),Ui.dp(this,12),Ui.dp(this,8));
         status.setBackground(Ui.bg(Ui.surface(this),Ui.dp(this,14)));
@@ -80,8 +80,8 @@ public final class WispImeService extends InputMethodService {
             }else{safeTop=insets.getSystemWindowInsetTop();safeBottom=Math.max(Ui.dp(this,24),insets.getSystemWindowInsetBottom());safeLeft=insets.getSystemWindowInsetLeft();safeRight=insets.getSystemWindowInsetRight();}
             positionViews();return insets;
         });
-        mic.setOnClickListener(v->{if(recorder!=null)stopAndProcess();else startRecording();});
-        mic.setOnTouchListener((v,e)->{
+        mic.setActions(()->{if(recorder!=null)stopAndProcess();else startRecording(false);},()->{if(recorder!=null)stopAndProcess();else startRecording(true);});
+        mic.setGestureListener((v,e)->{
             if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
                 downX=e.getRawX();downY=e.getRawY();startX=mic.getX();startY=mic.getY();dragging=false;longPressed=false;
                 handler.postDelayed(openSettingsHold,ViewConfiguration.getLongPressTimeout());return true;
@@ -103,7 +103,7 @@ public final class WispImeService extends InputMethodService {
     private float left(){return safeLeft+Ui.dp(this,10);}
     private float top(){return safeTop+Ui.dp(this,10);}
     private float right(){return Math.max(left(),root.getWidth()-safeRight-Ui.dp(this,74));}
-    private float bottom(){return Math.max(top(),root.getHeight()-safeBottom-Ui.dp(this,100));}
+    private float bottom(){return Math.max(top(),root.getHeight()-safeBottom-Ui.dp(this,VoiceControls.HEIGHT_DP+10));}
     private void moveBubble(float x,float y){mic.setX(Math.max(left(),Math.min(right(),x)));mic.setY(Math.max(top(),Math.min(bottom(),y)));}
     private void positionViews(){
         if(root==null||root.getWidth()==0||mic==null)return;
@@ -143,15 +143,15 @@ public final class WispImeService extends InputMethodService {
     @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);resetUi();}
     private void resetUi(){
         if(status==null)return;setStatus(sensitive?"В полях паролей диктовка отключена":"");
-        mic.setEnabled(!sensitive);mic.setState(VoiceBubble.IDLE);mic.setProgress(0);
+        mic.setEnabled(!sensitive);mic.setTranslation(false);mic.setState(VoiceBubble.IDLE);mic.setProgress(0);
     }
     @SuppressWarnings("deprecation")
-    private void startRecording(){
+    private void startRecording(boolean english){
         if(recorder!=null||busy||sensitive)return;
         if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.PERMISSION_REQUIRED,settings.mode(),0,-1,-1);error("Удерживайте микрофон и разрешите запись в настройках.");return;}
         if(!settings.hasKey()){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.KEY_STORAGE,DiagnosticLog.Outcome.FAILURE,settings.mode(),0,-1,-1);error("Удерживайте микрофон и сохраните API-ключ Groq в настройках.");return;}
         cancelSession();
-        trace=DiagnosticLog.session();tracePending=true;activeMode=settings.mode();journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.START,activeMode,0,-1,-1);
+        trace=DiagnosticLog.session();tracePending=true;activeMode=settings.modeForRecording(english);mic.setTranslation(english);journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.START,activeMode,0,-1,-1);
         try{
             audio=File.createTempFile("wisp-audio-",".m4a",getCacheDir());
             recorder=Build.VERSION.SDK_INT>=31?new MediaRecorder(this):new MediaRecorder();
@@ -166,7 +166,7 @@ public final class WispImeService extends InputMethodService {
     }
     private final Runnable tick=new Runnable(){public void run(){
         if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;
-        setStatus(String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));mic.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);
+        setStatus(("translate".equals(activeMode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));mic.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);
         handler.postDelayed(this,90);
     }};
     private void stopAndProcess(){
@@ -179,7 +179,7 @@ public final class WispImeService extends InputMethodService {
         journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.SUCCESS,activeMode,duration,-1,-1);
         busy=true;mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);setStatus("Распознаю…");
         final int token=generation;final File recorded=audio;final String operationTrace=trace;
-        final String lang=settings.language(),mode=settings.mode(),vocabulary=settings.vocabulary();final boolean turbo=settings.turbo(),emojis=settings.emojis();
+        final String lang=settings.language(),mode=activeMode,vocabulary=settings.vocabulary();final boolean turbo=settings.turbo(),emojis=settings.emojis();
         final GroqClient api=new GroqClient(journal,operationTrace,mode);activeApi=api;
         activeMode=mode;
         request=worker.submit(()->{

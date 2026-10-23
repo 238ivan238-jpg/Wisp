@@ -13,11 +13,13 @@ final class VoiceBubble extends View {
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private int state;
     private float progress;
+    private boolean translation;
     VoiceBubble(Context context){
         super(context);setBackground(Ui.bg(Ui.foreground(context),Ui.dp(context,100)));setElevation(Ui.dp(context,8));
         setClickable(true);setFocusable(false);setState(IDLE);
     }
-    void setState(int value){state=value;setContentDescription(switch(value){case RECORDING->"Остановить запись";case WORKING->"Обработка записи";default->"Микрофон. Нажмите для записи, удерживайте для настроек. Значок можно перетаскивать.";});invalidate();}
+    void setTranslation(boolean value){translation=value;setState(state);}
+    void setState(int value){state=value;setContentDescription(switch(value){case RECORDING->translation?"Остановить запись с переводом на английский":"Остановить запись без перевода";case WORKING->translation?"Перевод на английский":"Обработка записи";default->"Микрофон. Запись без перевода. Удерживайте для настроек. Значок можно перетаскивать.";});invalidate();}
     void setProgress(float value){progress=Math.max(0,Math.min(1,value));invalidate();}
     @Override public boolean performClick(){return super.performClick();}
     @Override protected void onDraw(Canvas c){
@@ -34,6 +36,7 @@ final class VoiceBubble extends View {
             paint.setStyle(Paint.Style.STROKE);c.drawArc(19,19,45,45,(SystemClock.uptimeMillis()%1000)*.36f,250,false,paint);
             if(isAttachedToWindow())postInvalidateDelayed(32);
         }
+        if(translation&&state!=IDLE){paint.setStyle(Paint.Style.FILL);paint.setTextSize(9);paint.setTextAlign(Paint.Align.CENTER);paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);c.drawText("EN",32,53,paint);}
         c.restore();
     }
 }

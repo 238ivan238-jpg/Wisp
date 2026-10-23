@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 10,
-  "versionName": "1.0.9",
+  "versionCode": 11,
+  "versionName": "1.0.10",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.9.apk",
-  "sha256": "578a9bca2d1409a7053ee27017d60c5a67001244231397c62d146521861f0c39",
-  "size": 5122298,
-  "notes": "Новая настройка «Добавлять эмодзи»: уместные эмодзи при диктовке и переводе на английский. По умолчанию выключена. Лимит записи — пять минут."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.10.apk",
+  "sha256": "5484e8703f63878f9bbca8225b533f058c29863a159b183e62ef64354c03e9e0",
+  "size": 5125478,
+  "notes": "Кнопка EN под микрофоном запускает одну запись с переводом на английский. Верхний микрофон — обычная диктовка без перевода. Режим виден на значке и таймере; удержание и перетаскивание работают на обеих кнопках."
 }

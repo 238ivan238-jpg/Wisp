@@ -30,7 +30,7 @@ public final class GboardCompanionService extends AccessibilityService {
     private UsageStats stats;
     private DiagnosticLog journal;
     private WindowManager windows;
-    private VoiceBubble bubble;
+    private VoiceControls bubble;
     private TextView label;
     private WindowManager.LayoutParams bubbleParams,labelParams;
     private EditorInfo editor;
@@ -64,15 +64,15 @@ public final class GboardCompanionService extends AccessibilityService {
             &&(selected==null||!selected.startsWith(getPackageName()+"/"));
     }
     private void createBubble(){
-        bubble=new VoiceBubble(this);label=Ui.text(this,"",13,Ui.foreground(this));label.setGravity(Gravity.CENTER);label.setMaxLines(3);
+        bubble=new VoiceControls(this);label=Ui.text(this,"",13,Ui.foreground(this));label.setGravity(Gravity.CENTER);label.setMaxLines(3);
         label.setPadding(Ui.dp(this,12),Ui.dp(this,8),Ui.dp(this,12),Ui.dp(this,8));label.setBackground(Ui.bg(Ui.surface(this),Ui.dp(this,14)));
         int flags=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL|WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
-        bubbleParams=new WindowManager.LayoutParams(Ui.dp(this,64),Ui.dp(this,64),WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,flags,PixelFormat.TRANSLUCENT);
+        bubbleParams=new WindowManager.LayoutParams(Ui.dp(this,VoiceControls.WIDTH_DP),Ui.dp(this,VoiceControls.HEIGHT_DP),WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,flags,PixelFormat.TRANSLUCENT);
         bubbleParams.gravity=Gravity.TOP|Gravity.LEFT;
         labelParams=new WindowManager.LayoutParams(Ui.dp(this,250),-2,WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,flags|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,PixelFormat.TRANSLUCENT);labelParams.gravity=Gravity.TOP|Gravity.LEFT;
         restorePosition();
-        bubble.setOnClickListener(v->{if(recorder!=null)process();else start();});
-        bubble.setOnTouchListener((v,e)->{
+        bubble.setActions(()->{if(recorder!=null)process();else start(false);},()->{if(recorder!=null)process();else start(true);});
+        bubble.setGestureListener((v,e)->{
             if(e.getActionMasked()==MotionEvent.ACTION_DOWN){downX=e.getRawX();downY=e.getRawY();initialX=bubbleParams.x;initialY=bubbleParams.y;dragging=false;held=false;handler.postDelayed(openSettings,ViewConfiguration.getLongPressTimeout());}
             else if(e.getActionMasked()==MotionEvent.ACTION_MOVE){float dx=e.getRawX()-downX,dy=e.getRawY()-downY;if(Math.hypot(dx,dy)>ViewConfiguration.get(this).getScaledTouchSlop()){dragging=true;handler.removeCallbacks(openSettings);}if(dragging){position(initialX+(int)dx,initialY+(int)dy);updatePosition();}}
             else if(e.getActionMasked()==MotionEvent.ACTION_UP){handler.removeCallbacks(openSettings);if(dragging)savePosition();else if(!held)v.performClick();}
@@ -82,8 +82,8 @@ public final class GboardCompanionService extends AccessibilityService {
     private final Runnable openSettings=()->{held=true;cancel();startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));};
     private android.graphics.Rect bounds(){try{return windows.getCurrentWindowMetrics().getBounds();}catch(RuntimeException e){var m=getResources().getDisplayMetrics();return new android.graphics.Rect(0,0,m.widthPixels,m.heightPixels);}}
     private android.graphics.Insets safe(){try{return windows.getCurrentWindowMetrics().getWindowInsets().getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());}catch(RuntimeException e){return android.graphics.Insets.of(0,Ui.dp(this,32),0,Ui.dp(this,48));}}
-    private void position(int x,int y){var r=bounds();var in=safe();int gap=Ui.dp(this,12),size=Ui.dp(this,64);
-        bubbleParams.x=Math.max(in.left+gap,Math.min(r.width()-in.right-size-gap,x));bubbleParams.y=Math.max(in.top+gap,Math.min(r.height()-in.bottom-size-gap,y));}
+    private void position(int x,int y){var r=bounds();var in=safe();int gap=Ui.dp(this,12);
+        bubbleParams.x=Math.max(in.left+gap,Math.min(r.width()-in.right-bubbleParams.width-gap,x));bubbleParams.y=Math.max(in.top+gap,Math.min(r.height()-in.bottom-bubbleParams.height-gap,y));}
     private void restorePosition(){var p=getSharedPreferences("wisp_companion_position",0);var b=bounds();position((int)(p.getFloat("x",.85f)*b.width()),(int)(p.getFloat("y",.43f)*b.height()));}
     private void savePosition(){var b=bounds();getSharedPreferences("wisp_companion_position",0).edit().putFloat("x",bubbleParams.x/(float)b.width()).putFloat("y",bubbleParams.y/(float)b.height()).apply();}
     private void updatePosition(){
@@ -101,7 +101,7 @@ public final class GboardCompanionService extends AccessibilityService {
         if(text.isEmpty()){if(labelShown){remove(label);labelShown=false;}}
         else if(bubbleShown){if(!labelShown){windows.addView(label,labelParams);labelShown=true;}updatePosition();}
     }
-    private void start(){
+    private void start(boolean english){
         if(busy||recorder!=null||!allowed())return;
         if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.PERMISSION_REQUIRED,settings.mode(),0,-1,-1);status("Удерживайте микрофон и разрешите запись в настройках Wisp.");return;}
         if(!settings.hasKey()){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.KEY_STORAGE,DiagnosticLog.Outcome.FAILURE,settings.mode(),0,-1,-1);status("Удерживайте микрофон и сохраните API-ключ Groq.");return;}
@@ -109,9 +109,9 @@ public final class GboardCompanionService extends AccessibilityService {
             if(getInputMethod()==null||getInputMethod().getCurrentInputConnection()==null){status("Поле не готово. Коснитесь его и попробуйте ещё раз.");return;}
             if(getInputMethod().getCurrentInputConnection().getSurroundingText(0,0,0)==null){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.FAILURE,settings.mode(),0,-1,-1);status("Это поле не поддерживает вставку рядом с Gboard. Используйте прежний режим Wisp.");return;}
         }catch(RuntimeException e){journal.failure(DiagnosticLog.session(),DiagnosticLog.Stage.INSERTION,settings.mode(),e);status("Поле не готово к вставке. Коснитесь его и попробуйте ещё раз.");return;}
-        cancel();trace=DiagnosticLog.session();mode=settings.mode();sessionTime=System.currentTimeMillis();journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.START,mode,0,-1,-1);
+        cancel();trace=DiagnosticLog.session();mode=settings.modeForRecording(english);bubble.setTranslation(english);sessionTime=System.currentTimeMillis();journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.START,mode,0,-1,-1);
         try{
-            notification("Запись микрофона");
+            notification(english?"Запись для перевода на английский":"Запись микрофона");
             audio=File.createTempFile("wisp-floating-",".m4a",getCacheDir());recorder=new MediaRecorder(this);
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
             recorder.setAudioChannels(1);recorder.setAudioSamplingRate(16000);recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(RecordingLimits.MAX_DURATION_MS);
@@ -126,7 +126,7 @@ public final class GboardCompanionService extends AccessibilityService {
         Notification n=new Notification.Builder(this,"wisp_dictation").setSmallIcon(R.drawable.ic_mic_notification).setContentTitle("Wisp").setContentText(text).setContentIntent(intent).setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).build();
         startForeground(31,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);foreground=true;
     }
-    private final Runnable tick=new Runnable(){public void run(){if(!allowed()){cancel();hide();return;}if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;status(String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));bubble.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);handler.postDelayed(this,100);}};
+    private final Runnable tick=new Runnable(){public void run(){if(!allowed()){cancel();hide();return;}if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;status(("translate".equals(mode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));bubble.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);handler.postDelayed(this,100);}};
     private void process(){
         if(recorder==null)return;long duration=SystemClock.elapsedRealtime()-started;MediaRecorder r=recorder;recorder=null;handler.removeCallbacks(tick);
         try{r.stop();}catch(RuntimeException e){r.release();journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);cancel();status("Запись слишком короткая. Говорите хотя бы секунду.");return;}r.release();
@@ -158,7 +158,7 @@ public final class GboardCompanionService extends AccessibilityService {
         }catch(RuntimeException e){insertionFailure(taskTrace,taskMode,e);}
     }
     private void insertionFailure(String taskTrace,String taskMode,Exception e){stats.recordFailure("input");if(e!=null)journal.failure(taskTrace,DiagnosticLog.Stage.INSERTION,taskMode,e);else journal.event(taskTrace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.FAILURE,taskMode,0,-1,-1);status("Поле не подтвердило готовность к вставке. Коснитесь его и повторите диктовку.");}
-    private void done(){busy=false;if(foreground){stopForeground(STOP_FOREGROUND_REMOVE);foreground=false;}if(bubble!=null){bubble.setEnabled(true);bubble.setState(VoiceBubble.IDLE);bubble.setProgress(0);}status("");}
+    private void done(){busy=false;if(foreground){stopForeground(STOP_FOREGROUND_REMOVE);foreground=false;}if(bubble!=null){bubble.setEnabled(true);bubble.setTranslation(false);bubble.setState(VoiceBubble.IDLE);bubble.setProgress(0);}status("");}
     private void cancel(){
         if(recorder!=null||busy)journal.event(trace,DiagnosticLog.Stage.LIFECYCLE,DiagnosticLog.Outcome.CANCELLED,mode,0,-1,-1);
         generation++;handler.removeCallbacksAndMessages(null);

@@ -54,7 +54,7 @@ public class CompanionServiceTest {
         var c=Robolectric.buildService(GboardCompanionService.class).create();try{
             var service=c.get();service.onServiceConnected();android.view.WindowManager.LayoutParams p=ReflectionHelpers.getField(service,"bubbleParams");
             assertEquals(android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,p.type);assertTrue((p.flags&android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)!=0);
-            assertEquals(Ui.dp(service,64),p.width);assertEquals(Ui.dp(service,64),p.height);assertTrue(p.x>=0);assertTrue(p.y>=0);
+            assertEquals(Ui.dp(service,64),p.width);assertEquals(Ui.dp(service,112),p.height);assertTrue(p.x>=0);assertTrue(p.y>=0);
         }finally{c.destroy();}
     }
     @Test public void restartedConnectionWithReusedFieldIdStillInvalidatesPendingResult()throws Exception{
@@ -72,6 +72,21 @@ public class CompanionServiceTest {
             var input=service.onCreateInputMethod();var info=new EditorInfo();info.inputType=InputType.TYPE_CLASS_TEXT;input.onStartInput(info,false);
             int token=ReflectionHelpers.getField(service,"generation");ReflectionHelpers.setField(service,"busy",true);keyguard.setKeyguardLocked(true);
             Runnable tick=ReflectionHelpers.getField(service,"tick");tick.run();assertFalse(ReflectionHelpers.getField(service,"busy"));assertTrue((int)ReflectionHelpers.getField(service,"generation")>token);
+        }finally{c.destroy();}
+    }
+    @Test public void draggingTheEnglishActionKeepsBothButtonsInsideTheSafeScreenArea(){
+        var c=Robolectric.buildService(GboardCompanionService.class).create();try{
+            var service=c.get();service.onServiceConnected();VoiceControls controls=ReflectionHelpers.getField(service,"bubble");
+            android.view.WindowManager.LayoutParams p=ReflectionHelpers.getField(service,"bubbleParams");
+            controls.measure(android.view.View.MeasureSpec.makeMeasureSpec(p.width,android.view.View.MeasureSpec.EXACTLY),android.view.View.MeasureSpec.makeMeasureSpec(p.height,android.view.View.MeasureSpec.EXACTLY));controls.layout(0,0,p.width,p.height);
+            android.view.View english=controls.getChildAt(1);assertTrue(english.getWidth()>=Ui.dp(service,48));assertTrue(english.getHeight()>=Ui.dp(service,48));
+            for(int action:new int[]{android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_MOVE,android.view.MotionEvent.ACTION_UP}){
+                var event=android.view.MotionEvent.obtain(0,10,action,action==android.view.MotionEvent.ACTION_DOWN?10:10000,action==android.view.MotionEvent.ACTION_DOWN?10:10000,0);english.dispatchTouchEvent(event);event.recycle();
+            }
+            var metrics=service.getSystemService(android.view.WindowManager.class).getCurrentWindowMetrics();var safe=metrics.getWindowInsets().getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout());
+            assertTrue(p.x+p.width<=metrics.getBounds().width()-safe.right);assertTrue(p.y+p.height<=metrics.getBounds().height()-safe.bottom);
+            assertTrue(english.getTop()>=controls.getChildAt(0).getBottom());assertTrue(service.getSharedPreferences("wisp_companion_position",0).contains("y"));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1));assertNull(Shadows.shadowOf(RuntimeEnvironment.getApplication()).getNextStartedActivity());
         }finally{c.destroy();}
     }
 }

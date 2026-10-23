@@ -56,4 +56,12 @@ public class UiRenderingTest {
         android.os.Bundle state=new android.os.Bundle();state.putInt("days",365);
         try(var controller=Robolectric.buildActivity(StatsActivity.class).create(state).start().resume().visible()){render(controller.get().getWindow().getDecorView(),"statistics-year.png",2300);}
     }
+    @Test @Config(qualifiers="w393dp-h852dp-notnight-420dpi") public void renderNormalAndTranslatedRecordingControls()throws Exception{
+        var app=RuntimeEnvironment.getApplication();var row=new android.widget.FrameLayout(app);row.setPadding(20,20,20,20);row.setBackgroundColor(Ui.surface(app));
+        for(int mode=0;mode<3;mode++){
+            VoiceControls controls=new VoiceControls(app);controls.setTranslation(mode==2);controls.setState(mode==0?VoiceBubble.IDLE:VoiceBubble.RECORDING);controls.setProgress(.4f);
+            var params=new android.widget.FrameLayout.LayoutParams(Ui.dp(app,64),Ui.dp(app,112));params.leftMargin=mode*Ui.dp(app,88);row.addView(controls,params);
+        }
+        render(row,"quick-translation.png",400);
+    }
 }

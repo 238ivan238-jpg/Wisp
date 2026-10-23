@@ -44,9 +44,10 @@ final class SecureSettings {
     void setLanguage(String v) { prefs.edit().putString("language",v).apply(); }
     // Former message/notes modes now use the same automatic editor. Preserve an
     // explicitly disabled editor when upgrading from an older release.
-    String mode() { String value=prefs.getString("mode","clean");return "raw".equals(value)||"translate".equals(value)?value:"clean"; }
+    String mode() { return "raw".equals(prefs.getString("mode","clean"))?"raw":"clean"; }
+    String modeForRecording(boolean english) { return english?"translate":mode(); }
     void setMode(String v) {
-        var edit=prefs.edit().putString("mode","raw".equals(v)||"translate".equals(v)?v:"clean");
+        var edit=prefs.edit().putString("mode","raw".equals(v)?v:"clean");
         if("raw".equals(v))edit.putBoolean("emojis",false);
         edit.apply();
     }

@@ -60,7 +60,7 @@ public class KeyboardTest {
     }
     @Test public void formerMessageAndNotesSettingsUseTheSingleEditorOnUpgrade(){
         var context=RuntimeEnvironment.getApplication();
-        for(String old:new String[]{"message","notes","clean"}){
+        for(String old:new String[]{"message","notes","clean","translate"}){
             context.getSharedPreferences("wisp_private",0).edit().putString("mode",old).commit();
             assertEquals("clean",new SecureSettings(context).mode());
             try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
@@ -81,15 +81,14 @@ public class KeyboardTest {
             assertFalse(((android.widget.Switch)find(a.get().getWindow().getDecorView(),"Чистый текст")).isChecked());
         }
     }
-    @Test public void translationToggleEnablesProcessingAndSurvivesReopeningSettings(){
-        var context=RuntimeEnvironment.getApplication();context.getSharedPreferences("wisp_private",0).edit().putString("mode","raw").commit();
-        try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
-            View root=a.get().getWindow().getDecorView();find(root,"Переводить на английский").performClick();
-            assertTrue(((android.widget.Switch)find(root,"Чистый текст")).isChecked());assertEquals("translate",new SecureSettings(context).mode());
+    @Test public void translationIsOneShotAndNeverChangesTheNormalRecordingPreference(){
+        var context=RuntimeEnvironment.getApplication();var settings=new SecureSettings(context);
+        for(String mode:new String[]{"clean","raw"}){
+            settings.setMode(mode);assertEquals("translate",settings.modeForRecording(true));
+            assertEquals(mode,settings.modeForRecording(false));assertEquals(mode,new SecureSettings(context).mode());
         }
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
-            View root=a.get().getWindow().getDecorView();assertTrue(((android.widget.Switch)find(root,"Переводить на английский")).isChecked());
-            find(root,"Чистый текст").performClick();assertEquals("raw",new SecureSettings(context).mode());assertFalse(((android.widget.Switch)find(root,"Переводить на английский")).isChecked());
+            View root=a.get().getWindow().getDecorView();assertNull(find(root,"Переводить на английский"));assertNotNull(find(root,"Перевод — по кнопке EN"));
         }
     }
     @Test public void emojiToggleEnablesProcessingPersistsAndCoexistsWithTranslation(){
@@ -98,14 +97,14 @@ public class KeyboardTest {
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
             View root=a.get().getWindow().getDecorView();find(root,"Добавлять эмодзи").performClick();
             assertTrue(((android.widget.Switch)find(root,"Чистый текст")).isChecked());assertEquals("clean",settings.mode());assertTrue(settings.emojis());
-            find(root,"Переводить на английский").performClick();assertEquals("translate",settings.mode());assertTrue(settings.emojis());
+            assertEquals("translate",settings.modeForRecording(true));assertEquals("clean",settings.mode());assertTrue(settings.emojis());
         }
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
             View root=a.get().getWindow().getDecorView();assertTrue(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());
-            find(root,"Добавлять эмодзи").performClick();assertFalse(settings.emojis());assertEquals("translate",settings.mode());
+            find(root,"Добавлять эмодзи").performClick();assertFalse(settings.emojis());assertEquals("clean",settings.mode());
             find(root,"Добавлять эмодзи").performClick();assertTrue(settings.emojis());
             find(root,"Чистый текст").performClick();assertEquals("raw",settings.mode());assertFalse(settings.emojis());
-            assertFalse(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());assertFalse(((android.widget.Switch)find(root,"Переводить на английский")).isChecked());
+            assertFalse(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());assertEquals("translate",settings.modeForRecording(true));
         }
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
             View root=a.get().getWindow().getDecorView();assertFalse(((android.widget.Switch)find(root,"Добавлять эмодзи")).isChecked());
@@ -124,7 +123,7 @@ public class KeyboardTest {
     }
     @Test public void onlyMicrophoneIsVisibleWhenIdle(){
         var c=Robolectric.buildService(WispImeService.class).create();try{
-            ViewGroup root=(ViewGroup)c.get().onCreateInputView();assertNotNull(bubble(root));
+            ViewGroup root=(ViewGroup)c.get().onCreateInputView();assertNotNull(bubble(root));assertNotNull(find(root,"EN"));
             int visible=0;for(int i=0;i<root.getChildCount();i++)if(root.getChildAt(i).getVisibility()==View.VISIBLE)visible++;
             assertEquals(1,visible);for(String removed:new String[]{"wisp","RU + EN","Чистый","ABC","Отмена","Вставить","Пробел","↶","⌫"})assertNull(find(root,removed));
         }finally{c.destroy();}
@@ -132,7 +131,7 @@ public class KeyboardTest {
     @Test public void passwordFieldsDisableMicrophone(){
         var c=Robolectric.buildService(WispImeService.class).create();try{
             WispImeService s=c.get();View root=s.onCreateInputView();EditorInfo info=new EditorInfo();info.inputType=InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD;
-            s.onStartInput(info,false);assertFalse(bubble(root).isEnabled());
+            s.onStartInput(info,false);assertFalse(bubble(root).isEnabled());assertFalse(find(root,"EN").isEnabled());
         }finally{c.destroy();}
     }
     @Test public void processedTextIsAutomaticallyCommittedToActualEditable()throws Exception{
@@ -177,7 +176,8 @@ public class KeyboardTest {
             WispImeService s=c.get();View root=s.onCreateInputView();root.measure(View.MeasureSpec.makeMeasureSpec(400,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(800,View.MeasureSpec.EXACTLY));root.layout(0,0,400,800);
             InputMethodService.Insets out=new InputMethodService.Insets();s.onComputeInsets(out);
             assertEquals(800,out.contentTopInsets);assertEquals(800,out.visibleTopInsets);assertEquals(InputMethodService.Insets.TOUCHABLE_INSETS_REGION,out.touchableInsets);
-            VoiceBubble mic=bubble(root);assertTrue("Region "+out.touchableRegion+", bubble "+mic.getX()+","+mic.getY(),out.touchableRegion.contains((int)(mic.getX()+mic.getWidth()/2),(int)(mic.getY()+mic.getHeight()/2)));assertFalse(out.touchableRegion.contains(1,1));
+            VoiceControls mic=(VoiceControls)bubble(root).getParent();assertTrue("Region "+out.touchableRegion+", bubble "+mic.getX()+","+mic.getY(),out.touchableRegion.contains((int)(mic.getX()+mic.getWidth()/2),(int)(mic.getY()+mic.getHeight()/2)));assertFalse(out.touchableRegion.contains(1,1));
+            TextView en=find(root,"EN");assertTrue(out.touchableRegion.contains((int)(mic.getX()+en.getX()+en.getWidth()/2),(int)(mic.getY()+en.getY()+en.getHeight()/2)));
             root.dispatchApplyWindowInsets(new WindowInsets.Builder().setInsets(WindowInsets.Type.navigationBars(),Insets.of(0,0,0,120)).build());
             assertTrue(mic.getY()+mic.getHeight()<=680);
         }finally{c.destroy();}
@@ -200,11 +200,11 @@ public class KeyboardTest {
     @Test public void draggingBubbleSavesPositionAndDoesNotOpenSettings(){
         var c=Robolectric.buildService(WispImeService.class).create();try{
             WispImeService s=c.get();View root=s.onCreateInputView();root.measure(View.MeasureSpec.makeMeasureSpec(400,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(800,View.MeasureSpec.EXACTLY));root.layout(0,0,400,800);
-            VoiceBubble mic=bubble(root);float before=mic.getX();
+            VoiceBubble mic=bubble(root);View controls=(View)mic.getParent();float before=controls.getX();
             for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_MOVE,MotionEvent.ACTION_UP}){
                 MotionEvent event=MotionEvent.obtain(0,10,action,action==MotionEvent.ACTION_DOWN?100:20,action==MotionEvent.ACTION_DOWN?100:20,0);mic.dispatchTouchEvent(event);event.recycle();
             }
-            assertTrue(mic.getX()<before);assertTrue(s.getSharedPreferences("wisp_bubble",0).getFloat("x",1)<1);
+            assertTrue(controls.getX()<before);assertTrue(s.getSharedPreferences("wisp_bubble",0).getFloat("x",1)<1);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1));
             assertNull(Shadows.shadowOf(RuntimeEnvironment.getApplication()).getNextStartedActivity());
         }finally{c.destroy();}
