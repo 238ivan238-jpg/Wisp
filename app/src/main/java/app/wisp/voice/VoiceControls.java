@@ -15,7 +15,7 @@ final class VoiceControls extends FrameLayout {
     private final Button english;
     private final Paint connector=new Paint(Paint.ANTI_ALIAS_FLAG);
     private int state=VoiceBubble.IDLE;
-    private boolean translation;
+    private boolean translation,retry;
     VoiceControls(Context context){
         super(context);setWillNotDraw(false);setClipChildren(false);setClipToPadding(false);
         microphone=new VoiceBubble(context);addView(microphone,new LayoutParams(Ui.dp(context,64),Ui.dp(context,64)));
@@ -30,9 +30,12 @@ final class VoiceControls extends FrameLayout {
     void setTranslation(boolean value){translation=value;microphone.setTranslation(value);setState(state);}
     void setState(int value){
         state=value;microphone.setState(value);
-        english.setContentDescription(value==VoiceBubble.RECORDING?"Остановить текущую запись":value==VoiceBubble.WORKING?"Обработка записи":"Записать с переводом на английский. Удерживайте для настроек. Можно перетаскивать.");
+        english.setText(value==VoiceBubble.RECORDING?"❚❚":value==VoiceBubble.PAUSED?"▶":retry&&value==VoiceBubble.IDLE?"↻":"EN");
+        english.setTextSize(value==VoiceBubble.IDLE&&!retry?12:23);
+        english.setContentDescription(value==VoiceBubble.RECORDING?"Приостановить запись":value==VoiceBubble.PAUSED?"Продолжить запись":value==VoiceBubble.WORKING?"Обработка записи":retry?"Повторить обработку сохранённой записи":"Записать с переводом на английский. Удерживайте для настроек. Можно перетаскивать.");
         english.setSelected(translation&&value!=VoiceBubble.IDLE);
     }
+    void setRetry(boolean value){retry=value;setState(state);}
     void setProgress(float value){microphone.setProgress(value);}
     @Override public void setEnabled(boolean enabled){super.setEnabled(enabled);if(microphone!=null)microphone.setEnabled(enabled);if(english!=null)english.setEnabled(enabled);}
     @Override protected void onDraw(Canvas canvas){super.onDraw(canvas);connector.setColor(Ui.foreground(getContext()));canvas.drawRect(Ui.dp(getContext(),25),Ui.dp(getContext(),52),Ui.dp(getContext(),39),Ui.dp(getContext(),80),connector);}

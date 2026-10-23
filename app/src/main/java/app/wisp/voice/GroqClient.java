@@ -208,12 +208,18 @@ final class GroqClient {
         };
         return new ApiException(response.code(),identifier,unavailable,message+suffix);
     }
-    void checkKey(String key) throws Exception {
+    static GroqClient preflight(DiagnosticLog log,String trace,String mode){return new GroqClient(new HttpTransport(4000,6000),log,trace,mode);}
+    void checkKey(String key) throws Exception {checkAccess(key,false,false);}
+    void checkAccess(String key,boolean turbo,boolean processing)throws Exception {
         JSONObject r=request("/models","GET",key,null,null,"");
-        JSONArray models=r.optJSONArray("data"); boolean whisper=false;
-        if(models!=null) for(int i=0;i<models.length();i++) if(WHISPER.equals(models.getJSONObject(i).optString("id"))) whisper=true;
-        if(!whisper) throw new ApiException("Ключ принят, но модель Whisper недоступна для этого аккаунта.");
+        JSONArray models=r.optJSONArray("data");boolean whisper=false,editor=false;
+        String expected=turbo?"whisper-large-v3-turbo":WHISPER;
+        if(models!=null)for(int i=0;i<models.length();i++){
+            String id=models.getJSONObject(i).optString("id");if(expected.equals(id))whisper=true;if(CLEANERS.contains(id))editor=true;
+        }
+        if(!whisper||processing&&!editor)throw new ApiException(404,"model_not_found",true,"Нужная модель недоступна для этого аккаунта.");
     }
+    boolean needsEditor(){return !"raw".equals(mode);}
     String transcribe(File audio,String key,String language) throws Exception {
         return transcribe(audio,key,language,false,"");
     }
@@ -317,6 +323,9 @@ final class GroqClient {
         return "Не удалось подключиться к Groq. Проверьте интернет и повторите запись.";
     }
     private static final class HttpTransport implements Transport {
+        private final int connectTimeout,readTimeout;
+        HttpTransport(){this(20000,60000);}
+        HttpTransport(int connect,int read){connectTimeout=connect;readTimeout=read;}
         private volatile HttpURLConnection active;
         private volatile boolean cancelled;
         public void cancel() { cancelled=true;HttpURLConnection c=active;if(c!=null)c.disconnect(); }
@@ -326,7 +335,7 @@ final class GroqClient {
             active=c;
             try {
                 if(cancelled)throw new InterruptedIOException();
-                c.setConnectTimeout(20000); c.setReadTimeout(60000); c.setInstanceFollowRedirects(false);
+                c.setConnectTimeout(connectTimeout); c.setReadTimeout(readTimeout); c.setInstanceFollowRedirects(false);
                 c.setRequestMethod(method); c.setRequestProperty("Authorization","Bearer "+key);
                 c.setRequestProperty("Accept","application/json");
                 if(body!=null) {

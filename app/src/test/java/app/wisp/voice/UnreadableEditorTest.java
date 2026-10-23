@@ -30,7 +30,7 @@ public class UnreadableEditorTest {
         Editor()throws Exception{
             var app=RuntimeEnvironment.getApplication();Shadows.shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
             app.getSharedPreferences("wisp_private",0).edit().putString("api_data","fixture-not-a-decryptable-key").commit();
-            controller=Robolectric.buildService(GboardCompanionService.class).create();service=controller.get();
+            controller=Robolectric.buildService(GboardCompanionService.class).create();service=controller.get();PauseAndPreflightTest.allow(service);
             Shadows.shadowOf(service.getSystemService(KeyguardManager.class)).setKeyguardLocked(false);
             android.provider.Settings.Secure.putString(service.getContentResolver(),android.provider.Settings.Secure.DEFAULT_INPUT_METHOD,"com.google.android.inputmethod.latin/.LatinIME");
             input=service.onCreateInputMethod();ReflectionHelpers.setField(service,"mInputMethod",input);
@@ -54,7 +54,7 @@ public class UnreadableEditorTest {
     }
     @Test public void neitherRecordingActionRequiresReadingSurroundingText()throws Exception{
         for(boolean english:new boolean[]{false,true})try(var editor=new Editor()){
-            VoiceControls controls=ReflectionHelpers.getField(editor.service,"bubble");controls.getChildAt(english?1:0).performClick();
+            VoiceControls controls=ReflectionHelpers.getField(editor.service,"bubble");controls.getChildAt(english?1:0).performClick();PauseAndPreflightTest.finishCheck(editor.service);
             assertNotNull(ReflectionHelpers.getField(editor.service,"recorder"));assertEquals(0,editor.reads);
             assertEquals(english?"translate":"clean",ReflectionHelpers.getField(editor.service,"mode"));
         }
@@ -75,4 +75,38 @@ public class UnreadableEditorTest {
             editor.input.onFinishInput();editor.deliver(new DictationPipeline.Result("private","private",""));assertEquals(0,editor.commits);
         }
     }
+    @Test public void companionPauseFreezesTimeAndKeepsTranslationUntilResumed()throws Exception{
+        try(var editor=new Editor()){
+            VoiceControls controls=ReflectionHelpers.getField(editor.service,"bubble");TextView lower=(TextView)controls.getChildAt(1);
+            lower.performClick();PauseAndPreflightTest.finishCheck(editor.service);assertNotNull(ReflectionHelpers.getField(editor.service,"recorder"));
+            android.os.SystemClock.sleep(1000);lower.performClick();RecordingClock clock=ReflectionHelpers.getField(editor.service,"clock");assertTrue(clock.paused());
+            long duration=clock.elapsed(android.os.SystemClock.elapsedRealtime());android.os.SystemClock.sleep(10000);assertEquals(duration,clock.elapsed(android.os.SystemClock.elapsedRealtime()));assertEquals("▶",lower.getText().toString());
+            lower.performClick();assertFalse(clock.paused());assertEquals("translate",ReflectionHelpers.getField(editor.service,"mode"));assertEquals(0,editor.commits);
+        }
+    }
+    @Test public void aSavedUnconfirmedCommitNeverOffersBlindAutomaticInsertionAgain()throws Exception{
+        try(var editor=new Editor()){
+            var key=javax.crypto.KeyGenerator.getInstance("AES").generateKey();
+            RecoveryStore store=new RecoveryStore(java.nio.file.Files.createTempDirectory("companion-recovery").toFile(),()->key);
+            java.io.File audio=new java.io.File(editor.service.getCacheDir(),"fixture.m4a");java.nio.file.Files.write(audio.toPath(),new byte[128]);
+            var entry=store.create(audio,System.currentTimeMillis(),1500,"clean","auto","",false,false);entry.original="Текст";entry.text="Текст.";store.save(entry);
+            ReflectionHelpers.setField(editor.service,"recovery",store);ReflectionHelpers.setField(editor.service,"draft",entry);
+            editor.deliver(new DictationPipeline.Result(entry.original,entry.text,""));assertEquals(1,editor.commits);assertTrue(store.get(entry.id).handed);
+            VoiceControls controls=ReflectionHelpers.getField(editor.service,"bubble");assertEquals("EN",((TextView)controls.getChildAt(1)).getText().toString());assertNull(ReflectionHelpers.getField(editor.service,"draft"));
+            assertEquals(1,store.list().size());assertEquals(0,new UsageStats(editor.service).snapshot().words());
+        }
+    }
+
+    @Test public void retryOfReadyTextUsesNoNetworkAndCommitsOnlyOnce()throws Exception{
+        try(var editor=new Editor()){
+            var key=javax.crypto.KeyGenerator.getInstance("AES").generateKey();RecoveryStore store=new RecoveryStore(java.nio.file.Files.createTempDirectory("ready-recovery").toFile(),()->key);
+            java.io.File audio=new java.io.File(editor.service.getCacheDir(),"fixture.m4a");java.nio.file.Files.write(audio.toPath(),new byte[128]);
+            var entry=store.create(audio,System.currentTimeMillis(),1500,"clean","auto","",false,false);entry.original="ну привет";entry.text="Привет!";store.save(entry);
+            ReflectionHelpers.setField(editor.service,"recovery",store);ReflectionHelpers.setField(editor.service,"draft",entry);
+            VoiceControls controls=ReflectionHelpers.getField(editor.service,"bubble");controls.setRetry(true);assertEquals("↻",((TextView)controls.getChildAt(1)).getText().toString());
+            controls.getChildAt(1).performClick();PauseAndPreflightTest.finishCheck(editor.service);
+            assertEquals("Привет!",editor.committed);assertEquals(1,editor.commits);assertTrue(store.get(entry.id).handed);assertEquals("EN",((TextView)controls.getChildAt(1)).getText().toString());
+        }
+    }
+
 }

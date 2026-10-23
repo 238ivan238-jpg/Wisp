@@ -35,14 +35,14 @@ public final class MainActivity extends Activity {
     void showSection(int section){showPage(sectionName(section));}
     private void showPage(String name){
         View focused=getCurrentFocus();if(focused!=null){getSystemService(InputMethodManager.class).hideSoftInputFromWindow(focused.getWindowToken(),0);focused.clearFocus();}
-        current=name;int selected=name.equals("voice")?AppNavigation.VOICE:name.equals("dictionary")?AppNavigation.DICTIONARY:AppNavigation.SETTINGS;
+        current=name;int selected=name.equals("voice")?AppNavigation.VOICE:AppNavigation.SETTINGS;
         setContentView(AppNavigation.wrap(this,screen(name),selected));refresh();
     }
     private ScrollView screen(String name){
         if(screens.containsKey(name))return screens.get(name);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(Ui.background(this));
         LinearLayout page=Ui.column(this);int p=Ui.dp(this,20);page.setPadding(p,Ui.dp(this,16),p,p);scroll.addView(page);screens.put(name,scroll);
-        if(!Set.of("voice","dictionary","settings").contains(name)){
+        if(!Set.of("voice","settings").contains(name)){
             Button back=Ui.button(this,"‹ Настройки",false);page.addView(back,Ui.fill(this,48));back.setOnClickListener(v->showPage("settings"));Ui.gap(page,16);
         }
         String title=switch(name){case "dictionary"->"Словарь";case "settings"->"Настройки";case "connection"->"Подключение";case "key"->"Ключ Groq";case "updates"->"Обновления";case "legacy"->"Клавиатура Wisp";default->"Голос";};
@@ -64,7 +64,7 @@ public final class MainActivity extends Activity {
         cleanup.setOnCheckedChangeListener((b,on)->{if(!on)emojis.setChecked(false);settings.setMode(on?"clean":"raw");});
         emojis.setOnCheckedChangeListener((b,on)->{if(on)cleanup.setChecked(true);settings.setEmojis(on);});
         Switch turbo=toggle(page,"Быстрый Whisper Turbo",settings.turbo());turbo.setOnCheckedChangeListener((b,on)->settings.setTurbo(on));hint(page,"По умолчанию — Whisper Large v3.");Ui.gap(page,12);
-        page.addView(Ui.bold(this,"Перевод — по кнопке EN",14,Ui.foreground(this)));hint(page,"Микрофон — без перевода. EN снизу — на английский.");
+        page.addView(Ui.bold(this,"Перевод — по кнопке EN",14,Ui.foreground(this)));hint(page,"Микрофон — без перевода. EN — на английский. Во время записи нижняя кнопка — пауза и продолжение.");
     }
     private Switch toggle(LinearLayout page,String title,boolean checked){
         Switch control=new Switch(this);control.setText(title);control.setTextSize(15);control.setTextColor(Ui.foreground(this));control.setMinHeight(Ui.dp(this,48));control.setChecked(checked);page.addView(control,Ui.fill(this,48));return control;
@@ -79,6 +79,7 @@ public final class MainActivity extends Activity {
         page.addView(row,Ui.fill(this,56));row.setOnClickListener(v->action.run());View line=new View(this);line.setBackgroundColor(Ui.border(this));page.addView(line,Ui.fill(this,1));
     }
     private void preferences(LinearLayout page){
+        link(page,"Словарь",()->showPage("dictionary"));
         link(page,"Подключение",()->showPage("connection"));link(page,"Ключ Groq",()->showPage("key"));
         link(page,"Обновления",()->showPage("updates"));link(page,"Клавиатура Wisp",()->showPage("legacy"));
     }
@@ -164,12 +165,12 @@ public final class MainActivity extends Activity {
         boolean mic=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
         boolean companion=getSystemService(android.view.accessibility.AccessibilityManager.class).getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK).stream().anyMatch(i->i.getResolveInfo()!=null&&i.getResolveInfo().serviceInfo!=null&&(getPackageName()+".GboardCompanionService").equals(i.getResolveInfo().serviceInfo.name));
         boolean ready=mic&&companion&&settings.hasKey();if(readiness!=null)readiness.setText(ready?"Готов к диктовке · до 5 минут":"Настройте подключение для диктовки");if(connect!=null)connect.setVisibility(ready?View.GONE:View.VISIBLE);
-        if(connectionStatus!=null)connectionStatus.setText((mic?"✓":"○")+" Микрофон   "+(companion?"✓":"○")+" Помощник   "+(settings.hasKey()?"✓":"○")+" Ключ");
+        if(connectionStatus!=null)connectionStatus.setText((ConnectionCheck.vpn(this)?"VPN включён. Wisp не обходит его.\n":"VPN не обнаружен.\n")+(mic?"✓":"○")+" Микрофон   "+(companion?"✓":"○")+" Помощник   "+(settings.hasKey()?"✓":"○")+" Ключ");
     }
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);showSection(intent.getIntExtra(AppNavigation.EXTRA_SECTION,0));}
     @Override protected void onResume(){super.onResume();refresh();if(updates!=null)updates.onResume();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("main_page",current);if(vocabulary!=null)state.putString("dictionary_draft",vocabulary.getText().toString());if(updates!=null)updates.save(state);}
     @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);refresh();}
-    @Override public void onBackPressed(){if(!Set.of("voice","dictionary","settings").contains(current))showPage("settings");else if(!current.equals("voice"))showPage("voice");else super.onBackPressed();}
+    @Override public void onBackPressed(){if(!Set.of("voice","settings").contains(current))showPage("settings");else if(!current.equals("voice"))showPage("voice");else super.onBackPressed();}
     @Override protected void onDestroy(){if(updates!=null)updates.close();worker.shutdownNow();super.onDestroy();}
 }

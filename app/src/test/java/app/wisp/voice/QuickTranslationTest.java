@@ -33,23 +33,27 @@ public class QuickTranslationTest {
         if(view instanceof ViewGroup group)for(int i=0;i<group.getChildCount();i++){VoiceBubble result=microphone(group.getChildAt(i));if(result!=null)return result;}return null;
     }
     private void connect(WispImeService service){
+        PauseAndPreflightTest.allow(service);
         EditorInfo info=new EditorInfo();info.inputType=InputType.TYPE_CLASS_TEXT;service.onStartInput(info,false);
     }
-    @Test public void englishStartsOneTranslatedRecordingAndNormalButtonReturnsToTheSavedMode(){
+    @Test public void englishStartsOneTranslatedRecordingAndNormalButtonReturnsToTheSavedMode()throws Exception{
         var controller=Robolectric.buildService(WispImeService.class).create();try{
             var service=controller.get();View root=service.onCreateInputView();var settings=new SecureSettings(service);settings.setMode("raw");connect(service);
-            english(root).performClick();assertNotNull(ReflectionHelpers.getField(service,"recorder"));
+            english(root).performClick();PauseAndPreflightTest.finishCheck(service);assertNotNull(ReflectionHelpers.getField(service,"recorder"));
             assertEquals("translate",ReflectionHelpers.getField(service,"activeMode"));assertEquals("raw",settings.mode());
             assertTrue(microphone(root).getContentDescription().toString().contains("с переводом"));
-            service.onFinishInput();connect(service);microphone(root).performClick();
+            service.onFinishInput();connect(service);microphone(root).performClick();PauseAndPreflightTest.finishCheck(service);
             assertNotNull(ReflectionHelpers.getField(service,"recorder"));assertEquals("raw",ReflectionHelpers.getField(service,"activeMode"));
             assertTrue(microphone(root).getContentDescription().toString().contains("без перевода"));
         }finally{controller.destroy();}
     }
-    @Test public void stopUsesTheModeChosenAtStartEvenIfPreferencesChangeDuringRecording(){
+    @Test public void stopUsesTheModeChosenAtStartEvenIfPreferencesChangeDuringRecording()throws Exception{
         var controller=Robolectric.buildService(WispImeService.class).create();try{
-            var service=controller.get();View root=service.onCreateInputView();connect(service);english(root).performClick();
+            var service=controller.get();View root=service.onCreateInputView();connect(service);english(root).performClick();PauseAndPreflightTest.finishCheck(service);
             assertNotNull(ReflectionHelpers.getField(service,"recorder"));new SecureSettings(service).setMode("raw");SystemClock.sleep(1000);
+            var generator=javax.crypto.KeyGenerator.getInstance("AES");var fixtureKey=generator.generateKey();
+            ReflectionHelpers.setField(service,"recovery",new RecoveryStore(java.nio.file.Files.createTempDirectory("quick-recovery").toFile(),()->fixtureKey));
+            java.io.File file=ReflectionHelpers.getField(service,"audio");java.nio.file.Files.write(file.toPath(),new byte[256]);
             microphone(root).performClick();assertNull(ReflectionHelpers.getField(service,"recorder"));
             GroqClient client=ReflectionHelpers.getField(service,"activeApi");assertNotNull(client);assertEquals("translate",ReflectionHelpers.getField(client,"mode"));
         }finally{controller.destroy();}

@@ -28,6 +28,11 @@ public final class WispImeService extends InputMethodService {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private SecureSettings settings;
+    private RecoveryStore recovery;
+    private RecoveryStore.Entry draft;
+    private String detachedRecovery="";
+    private ConnectionCheck.Probe preflight;
+    private final RecordingClock clock=new RecordingClock();
     private UsageStats stats;
     private DiagnosticLog journal;
     private String trace="";
@@ -47,7 +52,7 @@ public final class WispImeService extends InputMethodService {
     private TextView status;
     private VoiceControls mic;
     @Override public void onCreate(){
-        super.onCreate();settings=new SecureSettings(this);stats=new UsageStats(this);journal=new DiagnosticLog(this);
+        super.onCreate();settings=new SecureSettings(this);stats=new UsageStats(this);journal=new DiagnosticLog(this);recovery=new RecoveryStore(this);preflight=client->ConnectionCheck.check(this,settings,client);
         File[] stale=getCacheDir().listFiles((dir,name)->name.startsWith("wisp-audio-")&&name.endsWith(".m4a"));
         if(stale!=null)for(File f:stale)f.delete();
     }
@@ -80,7 +85,7 @@ public final class WispImeService extends InputMethodService {
             }else{safeTop=insets.getSystemWindowInsetTop();safeBottom=Math.max(Ui.dp(this,24),insets.getSystemWindowInsetBottom());safeLeft=insets.getSystemWindowInsetLeft();safeRight=insets.getSystemWindowInsetRight();}
             positionViews();return insets;
         });
-        mic.setActions(()->{if(recorder!=null)stopAndProcess();else startRecording(false);},()->{if(recorder!=null)stopAndProcess();else startRecording(true);});
+        mic.setActions(()->{if(recorder!=null)stopAndProcess();else startRecording(false);},()->{if(recorder!=null)pauseRecording();else if(draft!=null&&!draft.handed)retry();else if(!detachedRecovery.isEmpty())openRecovery();else startRecording(true);});
         mic.setGestureListener((v,e)->{
             if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
                 downX=e.getRawX();downY=e.getRawY();startX=mic.getX();startY=mic.getY();dragging=false;longPressed=false;
@@ -143,15 +148,24 @@ public final class WispImeService extends InputMethodService {
     @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);resetUi();}
     private void resetUi(){
         if(status==null)return;setStatus(sensitive?"В полях паролей диктовка отключена":"");
-        mic.setEnabled(!sensitive);mic.setTranslation(false);mic.setState(VoiceBubble.IDLE);mic.setProgress(0);
+        mic.setRetry(!detachedRecovery.isEmpty());mic.setEnabled(!sensitive);mic.setTranslation(false);mic.setState(VoiceBubble.IDLE);mic.setProgress(0);
     }
     @SuppressWarnings("deprecation")
     private void startRecording(boolean english){
         if(recorder!=null||busy||sensitive)return;
         if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.PERMISSION_REQUIRED,settings.mode(),0,-1,-1);error("Удерживайте микрофон и разрешите запись в настройках.");return;}
         if(!settings.hasKey()){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.KEY_STORAGE,DiagnosticLog.Outcome.FAILURE,settings.mode(),0,-1,-1);error("Удерживайте микрофон и сохраните API-ключ Groq в настройках.");return;}
-        cancelSession();
-        trace=DiagnosticLog.session();tracePending=true;activeMode=settings.modeForRecording(english);mic.setTranslation(english);journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.START,activeMode,0,-1,-1);
+        cancelSession();detachedRecovery="";
+        trace=DiagnosticLog.session();tracePending=true;activeMode=settings.modeForRecording(english);mic.setTranslation(english);
+        busy=true;mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);setStatus("Проверяю подключение…");
+        int token=generation;String checkTrace=trace,checkMode=activeMode;GroqClient client=GroqClient.preflight(journal,trace,activeMode);activeApi=client;
+        journal.event(trace,DiagnosticLog.Stage.PREFLIGHT,ConnectionCheck.vpn(this)?DiagnosticLog.Outcome.VPN_ACTIVE:DiagnosticLog.Outcome.VPN_INACTIVE,activeMode,0,-1,-1);
+        request=worker.submit(()->{try{preflight.check(client);journal.event(checkTrace,DiagnosticLog.Stage.PREFLIGHT,DiagnosticLog.Outcome.SUCCESS,checkMode,0,-1,-1);post(token,()->{busy=false;activeApi=null;beginRecording();});}
+            catch(Exception e){journal.failure(checkTrace,DiagnosticLog.Stage.PREFLIGHT,checkMode,e);post(token,()->{busy=false;tracePending=false;error(ConnectionCheck.error(e));});}});
+    }
+    @SuppressWarnings("deprecation")
+    private void beginRecording(){
+        if(sensitive){cancelSession();return;}journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.START,activeMode,0,-1,-1);
         try{
             audio=File.createTempFile("wisp-audio-",".m4a",getCacheDir());
             recorder=Build.VERSION.SDK_INT>=31?new MediaRecorder(this):new MediaRecorder();
@@ -160,63 +174,82 @@ public final class WispImeService extends InputMethodService {
             recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(RecordingLimits.MAX_DURATION_MS);
             recorder.setOnInfoListener((r,what,extra)->{if(what==MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED)stopAndProcess();});
             recorder.setOnErrorListener((r,what,extra)->{journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.FAILURE,activeMode,0,-1,-1);stats.recordFailure("microphone");cancelSession();error("Микрофон прервал запись. Попробуйте ещё раз.");});
-            recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();sessionTime=System.currentTimeMillis();
-            mic.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);mic.setState(VoiceBubble.RECORDING);handler.post(tick);
+            recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();clock.start(started);sessionTime=System.currentTimeMillis();
+            mic.setEnabled(true);mic.setState(VoiceBubble.RECORDING);handler.post(tick);
         }catch(Exception e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,activeMode,e);stats.recordFailure("microphone");cancelSession();error("Не удалось включить микрофон. Проверьте разрешение и другие приложения записи.");}
     }
     private final Runnable tick=new Runnable(){public void run(){
-        if(recorder==null)return;long seconds=(SystemClock.elapsedRealtime()-started)/1000;
-        setStatus(("translate".equals(activeMode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));mic.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);
+        if(getSystemService(android.app.KeyguardManager.class).isKeyguardLocked()){cancelSession();resetUi();return;}
+        if(recorder==null)return;long elapsed=clock.elapsed(SystemClock.elapsedRealtime());if(elapsed>=RecordingLimits.MAX_DURATION_MS){stopAndProcess();return;}long seconds=elapsed/1000;
+        setStatus((clock.paused()?"Пауза · ":"")+("translate".equals(activeMode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));mic.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);
         handler.postDelayed(this,90);
     }};
     private void stopAndProcess(){
-        if(recorder==null)return;long duration=SystemClock.elapsedRealtime()-started;
+        if(recorder==null)return;long duration=clock.elapsed(SystemClock.elapsedRealtime());
         MediaRecorder r=recorder;recorder=null;handler.removeCallbacks(tick);
         try{r.stop();}catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,activeMode,e);stats.recordFailure("microphone");r.release();cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
         r.release();
         if(duration<650){cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
         stats.recordUse(sessionTime,duration);
         journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.SUCCESS,activeMode,duration,-1,-1);
-        busy=true;mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);setStatus("Распознаю…");
-        final int token=generation;final File recorded=audio;final String operationTrace=trace;
-        final String lang=settings.language(),mode=activeMode,vocabulary=settings.vocabulary();final boolean turbo=settings.turbo(),emojis=settings.emojis();
-        final GroqClient api=new GroqClient(journal,operationTrace,mode);activeApi=api;
-        activeMode=mode;
-        request=worker.submit(()->{
-            try{
-                String key;try{key=settings.readKey();}catch(Exception e){journal.failure(operationTrace,DiagnosticLog.Stage.KEY_STORAGE,mode,e);throw e;}
-                DictationPipeline.Result result=DictationPipeline.run(api,recorded,key,lang,turbo,vocabulary,mode,emojis,
-                    original->post(token,()->setStatus("translate".equals(mode)?"Перевожу на английский…":"Обрабатываю текст…")));
-                post(token,()->deliver(token,result));
-            }catch(Exception e){post(token,()->{tracePending=false;journal.failure(operationTrace,DiagnosticLog.Stage.TRANSCRIPTION,mode,e);stats.recordFailure(GroqClient.failureCategory(e));busy=false;error(GroqClient.friendlyError(e));});}
-            finally{recorded.delete();}
-        });
+        try{draft=recovery.create(audio,sessionTime,duration,activeMode,settings,trace);audio.delete();audio=null;}
+        catch(Exception e){journal.failure(trace,DiagnosticLog.Stage.RECOVERY,activeMode,e);error("Не удалось сохранить запись для восстановления.");return;}
+        submitDraft();
+    }
+    private void pauseRecording(){
+        if(recorder==null||busy)return;
+        try{if(clock.paused()){recorder.resume();clock.resume(SystemClock.elapsedRealtime());mic.setState(VoiceBubble.RECORDING);journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.RESUMED,activeMode,0,-1,-1);}
+            else{recorder.pause();clock.pause(SystemClock.elapsedRealtime());mic.setState(VoiceBubble.PAUSED);journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.SUCCESS,activeMode,0,-1,-1);}}
+        catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,activeMode,e);cancelSession();error("Запись прервалась. Проверьте вкладку «Записи».");}
+    }
+    private void openRecovery(){startActivity(new Intent(this,RecoveryActivity.class).putExtra("recovery_id",detachedRecovery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
+    private void retry(){if(busy||recorder!=null||draft==null||draft.handed||sensitive)return;submitDraft();}
+    private void submitDraft(){
+        busy=true;mic.setRetry(false);mic.setEnabled(false);mic.setTranslation("translate".equals(draft.mode));mic.setState(VoiceBubble.WORKING);setStatus("Обрабатываю запись…");
+        int token=generation;RecoveryStore.Entry entry=draft;String operationTrace=trace,mode=entry.mode;
+        GroqClient api=new GroqClient(journal,operationTrace,mode);activeApi=api;
+        request=worker.submit(()->{try{
+            String key=entry.text.isEmpty()||!entry.error.isEmpty()?settings.readKey():"";
+            var result=RecoveryJob.run(recovery,entry,getCacheDir(),api,key,original->post(token,()->setStatus("translate".equals(mode)?"Перевожу на английский…":"Обрабатываю текст…")));
+            post(token,()->deliver(token,result));
+        }catch(Exception e){journal.failure(operationTrace,DiagnosticLog.Stage.RECOVERY,mode,e);post(token,()->{tracePending=false;stats.recordFailure(GroqClient.failureCategory(e));busy=false;error(ConnectionCheck.error(e)+" Нажмите ↻.");mic.setRetry(draft!=null&&!draft.handed);});}});
+    }
+    private boolean handoff(){
+        if(draft==null)return true;
+        try{draft.handed=true;recovery.save(draft);return true;}catch(Exception e){draft.handed=false;journal.failure(trace,DiagnosticLog.Stage.RECOVERY,activeMode,e);error("Текст сохранён. Повторите вставку кнопкой ↻.");mic.setRetry(true);return false;}
+    }
+    private void insertionFailure(){
+        error("Проверьте поле. Копия текста — Wisp → Записи.");mic.setRetry(draft!=null&&!draft.handed);
     }
     private void deliver(int token,DictationPipeline.Result result){
         if(token!=generation||sensitive)return;busy=false;tracePending=false;resetUi();
         journal.event(trace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.START,activeMode,0,-1,-1);
         if(!result.errorCategory().isEmpty())stats.recordFailure(result.errorCategory());
         InputConnection ic=getCurrentInputConnection();
-        if(ic==null){journal.event(trace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.FAILURE,activeMode,0,-1,-1);stats.recordFailure("input");error("Поле ввода закрыто. Откройте его и повторите диктовку.");return;}
+        if(ic==null){journal.event(trace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.FAILURE,activeMode,0,-1,-1);stats.recordFailure("input");insertionFailure();return;}
+        if(!handoff())return;
         try{
         CharSequence selected=ic.getSelectedText(0);
         String insertion=DictationText.insertion(result.text(),ic.getTextBeforeCursor(2,0),selected!=null&&selected.length()>0);
-        if(insertion.isEmpty()||!ic.commitText(insertion,1)){journal.event(trace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.FAILURE,activeMode,0,-1,-1);stats.recordFailure("input");error("Поле не приняло текст. Откройте его и повторите диктовку.");return;}
+        if(insertion.isEmpty()||!ic.commitText(insertion,1)){journal.event(trace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.FAILURE,activeMode,0,-1,-1);stats.recordFailure("input");insertionFailure();return;}
         stats.recordInsertion(sessionTime>0?sessionTime:System.currentTimeMillis(),result.original(),result.text(),activeMode,result.warning().isEmpty());
         journal.event(trace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.SUCCESS,activeMode,0,UsageStats.words(result.original()),UsageStats.words(result.text()));
-        if(!result.warning().isEmpty())setStatus(result.warning().replace("Сохранён исходный текст.","Вставлен исходный текст."));
-        }catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.INSERTION,activeMode,e);stats.recordFailure("input");error("Поле не приняло текст. Откройте его и повторите диктовку.");}
+        if(draft!=null){if(result.warning().isEmpty())recovery.delete(draft.id);draft=null;}
+        if(!result.warning().isEmpty())setStatus("Вставлен исходный текст. Обработка — во вкладке «Записи».");
+        }catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.INSERTION,activeMode,e);stats.recordFailure("input");insertionFailure();}
     }
-    private void post(int token,Runnable action){handler.post(()->{if(token==generation)action.run();});}
+    private void post(int token,Runnable action){handler.post(()->{if(token!=generation)return;if(getSystemService(android.app.KeyguardManager.class).isKeyguardLocked()){cancelSession();resetUi();return;}action.run();});}
     private void error(String message){if(status==null)return;resetUi();setStatus(message);}
     private void cancelSession(){
         if(tracePending&&journal!=null){journal.event(trace,DiagnosticLog.Stage.LIFECYCLE,DiagnosticLog.Outcome.CANCELLED,activeMode,0,-1,-1);tracePending=false;}
+        if(draft!=null&&!draft.handed)detachedRecovery=draft.id;
         generation++;handler.removeCallbacksAndMessages(null);
-        if(recorder!=null){try{recorder.stop();}catch(RuntimeException ignored){}recorder.release();recorder=null;}
+        if(recorder!=null){boolean valid=false;try{recorder.stop();valid=true;}catch(RuntimeException ignored){}recorder.release();recorder=null;
+            long duration=clock.elapsed(SystemClock.elapsedRealtime());if(valid&&duration>=650&&audio!=null)try{detachedRecovery=recovery.create(audio,sessionTime,duration,activeMode,settings,trace).id;}catch(Exception e){journal.failure(trace,DiagnosticLog.Stage.RECOVERY,activeMode,e);}}
         if(request!=null){request.cancel(true);request=null;}
         if(activeApi!=null){activeApi.cancel();activeApi=null;}
         if(audio!=null){audio.delete();audio=null;}
-        busy=false;
+        draft=null;busy=false;
     }
     @Override public void onConfigurationChanged(Configuration config){cancelSession();super.onConfigurationChanged(config);if(isInputViewShown())setInputView(onCreateInputView());}
     @Override public void onFinishInputView(boolean finishingInput){cancelSession();resetUi();super.onFinishInputView(finishingInput);}

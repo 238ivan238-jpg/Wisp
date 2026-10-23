@@ -17,7 +17,11 @@ final class DictationPipeline {
         String original=api.transcribe(audio,key,language,turbo,vocabulary);
         if("raw".equals(mode))return new Result(original,original,"");
         recognized.accept(original);
+        return finish(api,original,key,vocabulary,mode,emojis);
+    }
+    static Result finish(GroqClient api,String original,String key,String vocabulary,String mode,boolean emojis)throws Exception {
         if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();
+        if("raw".equals(mode))return new Result(original,original,"");
         try {
             String text="translate".equals(mode)?api.translate(original,key,vocabulary,emojis):api.clean(original,key,vocabulary,emojis);
             api.processingResult(original,text);

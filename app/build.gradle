@@ -7,8 +7,8 @@ android {
         applicationId 'app.wisp.voice'
         minSdk 28
         targetSdk 35
-        versionCode 14
-        versionName '1.0.13'
+        versionCode 15
+        versionName '1.0.14'
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
     signingConfigs {
@@ -30,6 +30,9 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
         unitTests.all {
+            // Temurin 21.0.8 C2 can crash while compiling Robolectric's instrumented
+            // UsageStats.update. C1 keeps cloud test execution deterministic.
+            jvmArgs '-XX:TieredStopAtLevel=1'
             def testHome = file("${rootDir}/.local/test-home")
             testHome.mkdirs()
             systemProperty 'user.home', testHome.absolutePath

@@ -156,7 +156,7 @@ public class KeyboardTest {
         var c=Robolectric.buildService(WispImeService.class).create();try{
             WispImeService s=c.get();View root=s.onCreateInputView();Editable text=connect(s,"");
             deliver(s,generation(s),"Ну, deploy завтра.","Очистка не удалась. Сохранён исходный текст.");
-            assertEquals("Ну, deploy завтра.",text.toString());assertNull(find(root,"Ну, deploy завтра."));assertNotNull(find(root,"Очистка не удалась. Вставлен исходный текст."));
+            assertEquals("Ну, deploy завтра.",text.toString());assertNull(find(root,"Ну, deploy завтра."));assertNotNull(find(root,"Вставлен исходный текст. Обработка — во вкладке «Записи»."));
         }finally{c.destroy();}
     }
     @Test public void changedFieldCannotReceiveAStaleResult()throws Exception{

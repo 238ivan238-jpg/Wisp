@@ -9,7 +9,7 @@ import android.view.View;
 
 /** A monochrome microphone, stop indicator and processing spinner in one touch target. */
 final class VoiceBubble extends View {
-    static final int IDLE=0,RECORDING=1,WORKING=2;
+    static final int IDLE=0,RECORDING=1,WORKING=2,PAUSED=3;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private int state;
     private float progress;
@@ -19,7 +19,7 @@ final class VoiceBubble extends View {
         setClickable(true);setFocusable(false);setState(IDLE);
     }
     void setTranslation(boolean value){translation=value;setState(state);}
-    void setState(int value){state=value;setContentDescription(switch(value){case RECORDING->translation?"Остановить запись с переводом на английский":"Остановить запись без перевода";case WORKING->translation?"Перевод на английский":"Обработка записи";default->"Микрофон. Запись без перевода. Удерживайте для настроек. Значок можно перетаскивать.";});invalidate();}
+    void setState(int value){state=value;setContentDescription(switch(value){case RECORDING,PAUSED->translation?"Остановить запись с переводом на английский":"Остановить запись без перевода";case WORKING->translation?"Перевод на английский":"Обработка записи";default->"Микрофон. Запись без перевода. Удерживайте для настроек. Значок можно перетаскивать.";});invalidate();}
     void setProgress(float value){progress=Math.max(0,Math.min(1,value));invalidate();}
     @Override public boolean performClick(){return super.performClick();}
     @Override protected void onDraw(Canvas c){
@@ -29,7 +29,7 @@ final class VoiceBubble extends View {
             paint.setStyle(Paint.Style.FILL);c.drawRoundRect(27,18,37,35,5,5,paint);
             paint.setStyle(Paint.Style.STROKE);c.drawArc(new RectF(22,25,42,43),0,180,false,paint);
             c.drawLine(32,43,32,49,paint);c.drawLine(26,49,38,49,paint);
-        }else if(state==RECORDING){
+        }else if(state==RECORDING||state==PAUSED){
             paint.setStyle(Paint.Style.FILL);c.drawRoundRect(24,24,40,40,3,3,paint);
             paint.setStyle(Paint.Style.STROKE);c.drawArc(5,5,59,59,-90,Math.max(5,360*(1-progress)),false,paint);
         }else{

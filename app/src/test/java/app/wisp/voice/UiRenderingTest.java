@@ -77,4 +77,12 @@ public class UiRenderingTest {
         }
         render(row,"quick-translation.png",400);
     }
+    @Test public void renderRecoveryAndPauseRetryControls()throws Exception{
+        try(var activity=Robolectric.buildActivity(RecoveryActivity.class).setup()){render(activity.get().getWindow().getDecorView(),"recovery.png",2300);}
+        var app=RuntimeEnvironment.getApplication();var row=new android.widget.FrameLayout(app);row.setPadding(20,20,20,20);row.setBackgroundColor(Ui.surface(app));
+        for(int i=0;i<3;i++){VoiceControls controls=new VoiceControls(app);controls.setTranslation(i==0);controls.setState(i==0?VoiceBubble.RECORDING:i==1?VoiceBubble.PAUSED:VoiceBubble.IDLE);controls.setRetry(i==2);controls.setProgress(.4f);
+            var params=new android.widget.FrameLayout.LayoutParams(Ui.dp(app,64),Ui.dp(app,112));params.leftMargin=i*Ui.dp(app,88);row.addView(controls,params);}
+        render(row,"pause-retry.png",400);
+    }
+
 }

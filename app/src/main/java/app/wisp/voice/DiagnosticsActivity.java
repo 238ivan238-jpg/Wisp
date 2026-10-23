@@ -10,7 +10,8 @@ import java.nio.charset.StandardCharsets;
 public final class DiagnosticsActivity extends Activity {
     private static final int SAVE_LOG=41;
     private DiagnosticLog log;
-    @Override public void onCreate(Bundle state){super.onCreate(state);log=new DiagnosticLog(this);}
+    private String session="";
+    @Override public void onCreate(Bundle state){super.onCreate(state);log=new DiagnosticLog(this);String value=getIntent().getStringExtra("session");if(value!=null&&value.matches("[a-f0-9-]{36}"))session=value;}
     @Override protected void onResume(){super.onResume();render();}
     private void render(){
         ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.background(this));
@@ -20,12 +21,13 @@ public final class DiagnosticsActivity extends Activity {
         Button share=Ui.button(this,"Поделиться логами",true);page.addView(share,Ui.fill(this,48));share.setOnClickListener(v->{try{startActivity(Intent.createChooser(DiagnosticLog.shareIntent(this,log.export()),"Отправить логи Wisp"));}catch(Exception e){failed(e);}});Ui.gap(page,8);
         Button save=Ui.button(this,"Сохранить файл логов",false);page.addView(save,Ui.fill(this,48));save.setOnClickListener(v->{try{startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE,"Wisp-diagnostics.json"),SAVE_LOG);}catch(Exception e){failed(e);}});Ui.gap(page,12);
         page.addView(Ui.text(this,"Прикрепите сохранённый JSON к чату для разбора ошибки.",12,Ui.muted(this)));Ui.gap(page,20);
-        LinearLayout recent=Ui.column(this);page.addView(recent,Ui.fill(this,-2));recent.addView(Ui.bold(this,"Последние события",18,Ui.foreground(this)));Ui.gap(recent,8);
+        LinearLayout recent=Ui.column(this);page.addView(recent,Ui.fill(this,-2));recent.addView(Ui.bold(this,session.isEmpty()?"Последние события":"События этой записи",18,Ui.foreground(this)));Ui.gap(recent,8);
         var events=log.events();if(events.length()==0)recent.addView(Ui.text(this,"Журнал пока пуст.",14,Ui.muted(this)));
-        for(int i=events.length()-1;i>=Math.max(0,events.length()-12);i--){var entry=events.optJSONObject(i);if(entry==null)continue;
+        for(int i=events.length()-1;i>=(session.isEmpty()?Math.max(0,events.length()-12):0);i--){var entry=events.optJSONObject(i);if(entry==null||!session.isEmpty()&&!session.equals(entry.optString("session")))continue;
             String text=entry.optString("timeUtc")+"\n"+entry.optString("stage")+" · "+entry.optString("outcome");
             if(entry.has("httpStatus"))text+=" · HTTP "+entry.optInt("httpStatus");recent.addView(Ui.text(this,text,12,Ui.foreground(this)));Ui.gap(recent,10);
         }
+        if(!session.isEmpty()){Button all=Ui.button(this,"Все события",false);page.addView(all,Ui.fill(this,48));all.setOnClickListener(v->{session="";render();});}
         Ui.gap(page,16);Button clear=Ui.button(this,"Очистить журнал",false);page.addView(clear,Ui.fill(this,48));
         clear.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Очистить журнал?").setMessage("Локальные события и временные файлы логов будут удалены. Статистика сохранится.").setNegativeButton("Отмена",null).setPositiveButton("Очистить",(dialog,which)->{log.clear();render();}).show());
     }

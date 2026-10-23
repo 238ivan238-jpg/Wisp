@@ -121,4 +121,13 @@ public class GroqClientTest {
         new GroqClient((p,m,k,t,b)->new GroqClient.Response(200,"{\"data\":[{\"id\":\"whisper-large-v3\"}]}")).checkKey("k");
         assertThrows(GroqClient.ApiException.class,()->new GroqClient((p,m,k,t,b)->new GroqClient.Response(200,"{\"data\":[]}")).checkKey("k"));
     }
+    @Test public void preflightChecksSelectedSpeechAndTextModelsWithoutSendingAudio()throws Exception{
+        java.util.List<String> calls=new java.util.ArrayList<>();
+        GroqClient client=new GroqClient((path,method,key,type,body)->{calls.add(path);assertEquals("GET",method);assertNull(body);return new GroqClient.Response(200,"{\"data\":[{\"id\":\"whisper-large-v3-turbo\"},{\"id\":\"openai/gpt-oss-20b\"}]}");});
+        client.checkAccess("fixture",true,true);assertEquals(java.util.List.of("/models"),calls);
+        assertThrows(GroqClient.ApiException.class,()->client.checkAccess("fixture",false,true));
+        GroqClient speechOnly=new GroqClient((p,m,k,t,b)->new GroqClient.Response(200,"{\"data\":[{\"id\":\"whisper-large-v3\"}]}"));
+        speechOnly.checkAccess("fixture",false,false);assertThrows(GroqClient.ApiException.class,()->speechOnly.checkAccess("fixture",false,true));
+    }
+
 }

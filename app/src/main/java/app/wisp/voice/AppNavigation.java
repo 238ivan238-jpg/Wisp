@@ -8,10 +8,10 @@ import android.widget.*;
 
 /** Shared compact navigation; scrollable content never contains the bottom bar. */
 final class AppNavigation {
-    static final int VOICE=0,DICTIONARY=1,STATS=2,DIAGNOSTICS=3,SETTINGS=4;
+    static final int VOICE=0,RECOVERY=1,STATS=2,DIAGNOSTICS=3,SETTINGS=4,DICTIONARY=5;
     static final String EXTRA_SECTION="wisp_section";
-    private static final String[] LABELS={"Голос","Словарь","Статистика","Диагностика","Настройки"};
-    private static final int[] ICONS={R.drawable.nav_voice,R.drawable.nav_dictionary,R.drawable.nav_stats,R.drawable.nav_diagnostics,R.drawable.nav_settings};
+    private static final String[] LABELS={"Голос","Записи","Статистика","Диагностика","Настройки"};
+    private static final int[] ICONS={R.drawable.nav_voice,R.drawable.nav_recovery,R.drawable.nav_stats,R.drawable.nav_diagnostics,R.drawable.nav_settings};
     static View wrap(Activity activity,View content,int selected){
         if(content.getParent() instanceof ViewGroup parent)parent.removeView(content);
         LinearLayout shell=Ui.column(activity);shell.setTag("app_shell");shell.setBackgroundColor(Ui.background(activity));
@@ -35,9 +35,9 @@ final class AppNavigation {
         shell.addView(bar,new LinearLayout.LayoutParams(-1,-2));return shell;
     }
     static void open(Activity activity,int section){
-        if(section<VOICE||section>SETTINGS)section=VOICE;
-        if(activity instanceof MainActivity main&&section!=STATS&&section!=DIAGNOSTICS){main.showSection(section);return;}
-        Class<? extends Activity> target=section==STATS?StatsActivity.class:section==DIAGNOSTICS?DiagnosticsActivity.class:MainActivity.class;
+        if(section<VOICE||section>DICTIONARY)section=VOICE;
+        if(activity instanceof MainActivity main&&section!=STATS&&section!=DIAGNOSTICS&&section!=RECOVERY){main.showSection(section);return;}
+        Class<? extends Activity> target=section==RECOVERY?RecoveryActivity.class:section==STATS?StatsActivity.class:section==DIAGNOSTICS?DiagnosticsActivity.class:MainActivity.class;
         activity.startActivity(new Intent(activity,target).putExtra(EXTRA_SECTION,section).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_NO_ANIMATION));
     }
     private AppNavigation(){}

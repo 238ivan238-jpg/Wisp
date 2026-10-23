@@ -29,12 +29,12 @@ public class NavigationTest {
     @Test public void dictionaryDraftSurvivesTabChangesAndRecreationWhileSavePersistsOnlyOnRequest(){
         Bundle state=new Bundle();String draft="GitHub, Android, Иван";
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
-            tab(a.get(),1);EditText input=root(a.get()).findViewWithTag("dictionary_input");input.setText(draft);tab(a.get(),0);tab(a.get(),1);
+            a.get().showSection(AppNavigation.DICTIONARY);EditText input=root(a.get()).findViewWithTag("dictionary_input");input.setText(draft);tab(a.get(),0);a.get().showSection(AppNavigation.DICTIONARY);
             assertEquals(draft,((EditText)root(a.get()).findViewWithTag("dictionary_input")).getText().toString());assertEquals("",new SecureSettings(a.get()).vocabulary());
             find(root(a.get()),"Сохранить словарь").performClick();assertEquals(draft,new SecureSettings(a.get()).vocabulary());input.setText(draft+", unsaved");a.saveInstanceState(state);
         }
         try(var a=Robolectric.buildActivity(MainActivity.class).create(state).start().resume().visible()){
-            assertTrue(root(a.get()).findViewWithTag("nav_1").isSelected());assertEquals(draft+", unsaved",((EditText)root(a.get()).findViewWithTag("dictionary_input")).getText().toString());assertEquals(draft,new SecureSettings(a.get()).vocabulary());
+            assertTrue(root(a.get()).findViewWithTag("nav_4").isSelected());assertEquals(draft+", unsaved",((EditText)root(a.get()).findViewWithTag("dictionary_input")).getText().toString());assertEquals(draft,new SecureSettings(a.get()).vocabulary());
         }
     }
     @Test public void settingsOpenDetailsAndBackReturnsToTheMenuWithoutRecreatingTheUpdater(){
@@ -47,6 +47,7 @@ public class NavigationTest {
     }
     @Test public void statsAndDiagnosticsTabsOpenTheirDataScreensDirectly(){
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
+            tab(a.get(),1);assertEquals(RecoveryActivity.class.getName(),Shadows.shadowOf(a.get()).getNextStartedActivity().getComponent().getClassName());
             tab(a.get(),2);assertEquals(StatsActivity.class.getName(),Shadows.shadowOf(a.get()).getNextStartedActivity().getComponent().getClassName());
             tab(a.get(),3);assertEquals(DiagnosticsActivity.class.getName(),Shadows.shadowOf(a.get()).getNextStartedActivity().getComponent().getClassName());
         }
@@ -62,7 +63,7 @@ public class NavigationTest {
     }
     @Test public void everyTabLabelKeepsItsMeasuredHeightAfterSwitchingBetweenMainSections(){
         try(var a=Robolectric.buildActivity(MainActivity.class).setup()){
-            for(int section:new int[]{0,1,4,0,4}){
+            for(int section:new int[]{0,AppNavigation.DICTIONARY,4,0,4}){
                 a.get().showSection(section);Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();View root=root(a.get());root.measure(View.MeasureSpec.makeMeasureSpec(1032,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(2300,View.MeasureSpec.EXACTLY));root.layout(0,0,1032,2300);
                 ViewGroup bar=root.findViewWithTag("bottom_navigation");for(int i=0;i<5;i++){ViewGroup item=(ViewGroup)bar.getChildAt(i);TextView label=(TextView)item.getChildAt(1);assertTrue(label.getText().toString(),label.getHeight()>0);assertTrue(label.getBottom()<=item.getHeight());}
             }
