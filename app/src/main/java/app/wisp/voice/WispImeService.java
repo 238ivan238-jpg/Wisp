@@ -181,7 +181,7 @@ public final class WispImeService extends InputMethodService {
     private final Runnable tick=new Runnable(){public void run(){
         if(getSystemService(android.app.KeyguardManager.class).isKeyguardLocked()){cancelSession();resetUi();return;}
         if(recorder==null)return;long elapsed=clock.elapsed(SystemClock.elapsedRealtime());if(elapsed>=RecordingLimits.MAX_DURATION_MS){stopAndProcess();return;}long seconds=elapsed/1000;
-        setStatus((clock.paused()?"Пауза · ":"")+("translate".equals(activeMode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));mic.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);
+        setStatus((clock.paused()?"Пауза · ":"")+("translate".equals(activeMode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));mic.setAmplitude(RecorderLevel.read(recorder,clock.paused()));mic.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);
         handler.postDelayed(this,90);
     }};
     private void stopAndProcess(){
@@ -198,7 +198,7 @@ public final class WispImeService extends InputMethodService {
     }
     private void pauseRecording(){
         if(recorder==null||busy)return;
-        try{if(clock.paused()){recorder.resume();clock.resume(SystemClock.elapsedRealtime());mic.setState(VoiceBubble.RECORDING);journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.RESUMED,activeMode,0,-1,-1);}
+        try{if(clock.paused()){recorder.resume();RecorderLevel.read(recorder,false);clock.resume(SystemClock.elapsedRealtime());mic.setState(VoiceBubble.RECORDING);journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.RESUMED,activeMode,0,-1,-1);}
             else{recorder.pause();clock.pause(SystemClock.elapsedRealtime());mic.setState(VoiceBubble.PAUSED);journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.SUCCESS,activeMode,0,-1,-1);}}
         catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,activeMode,e);cancelSession();error("Запись прервалась. Проверьте вкладку «Записи».");}
     }

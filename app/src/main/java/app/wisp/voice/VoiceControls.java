@@ -36,6 +36,7 @@ final class VoiceControls extends FrameLayout {
         english.setSelected(translation&&value!=VoiceBubble.IDLE);
     }
     void setRetry(boolean value){retry=value;setState(state);}
+    void setAmplitude(int value){microphone.setAmplitude(value);}
     void setProgress(float value){microphone.setProgress(value);}
     @Override public void setEnabled(boolean enabled){super.setEnabled(enabled);if(microphone!=null)microphone.setEnabled(enabled);if(english!=null)english.setEnabled(enabled);}
     @Override protected void onDraw(Canvas canvas){super.onDraw(canvas);connector.setColor(Ui.foreground(getContext()));canvas.drawRect(Ui.dp(getContext(),25),Ui.dp(getContext(),52),Ui.dp(getContext(),39),Ui.dp(getContext(),80),connector);}

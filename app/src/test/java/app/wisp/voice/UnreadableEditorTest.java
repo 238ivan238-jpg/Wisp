@@ -109,4 +109,15 @@ public class UnreadableEditorTest {
         }
     }
 
+    @Test @Config(shadows=VoiceMeterTest.LevelRecorder.class) public void companionFeedsTheLiveLevelAndStopsMeteringWhilePaused()throws Exception{
+        VoiceMeterTest.LevelRecorder.amplitude=0;VoiceMeterTest.LevelRecorder.reads=0;VoiceMeterTest.LevelRecorder.fail=false;
+        try(var editor=new Editor()){
+            VoiceControls controls=ReflectionHelpers.getField(editor.service,"bubble");controls.getChildAt(1).performClick();PauseAndPreflightTest.finishCheck(editor.service);
+            VoiceMeterTest.LevelRecorder.amplitude=16000;Runnable tick=ReflectionHelpers.getField(editor.service,"tick");tick.run();
+            VoiceLevel meter=ReflectionHelpers.getField(controls.getChildAt(0),"meter");meter.snap();assertTrue(meter.level(1)>.9f);
+            controls.getChildAt(1).performClick();int reads=VoiceMeterTest.LevelRecorder.reads;tick.run();assertEquals(reads,VoiceMeterTest.LevelRecorder.reads);assertEquals(0,meter.level(1),0);
+            controls.getChildAt(1).performClick();VoiceMeterTest.LevelRecorder.fail=true;tick.run();assertNotNull(ReflectionHelpers.getField(editor.service,"recorder"));assertEquals(0,editor.commits);
+        }
+    }
+
 }

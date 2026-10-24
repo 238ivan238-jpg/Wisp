@@ -142,7 +142,7 @@ public final class GboardCompanionService extends AccessibilityService {
         Notification n=new Notification.Builder(this,"wisp_dictation").setSmallIcon(R.drawable.ic_mic_notification).setContentTitle("Wisp").setContentText(text).setContentIntent(intent).setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).build();
         startForeground(31,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);foreground=true;
     }
-    private final Runnable tick=new Runnable(){public void run(){if(!allowed()){cancel();hide();return;}if(recorder==null)return;long elapsed=clock.elapsed(SystemClock.elapsedRealtime());if(elapsed>=RecordingLimits.MAX_DURATION_MS){process();return;}long seconds=elapsed/1000;status((clock.paused()?"Пауза · ":"")+("translate".equals(mode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));bubble.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);handler.postDelayed(this,100);}};
+    private final Runnable tick=new Runnable(){public void run(){if(!allowed()){cancel();hide();return;}if(recorder==null)return;long elapsed=clock.elapsed(SystemClock.elapsedRealtime());if(elapsed>=RecordingLimits.MAX_DURATION_MS){process();return;}long seconds=elapsed/1000;status((clock.paused()?"Пауза · ":"")+("translate".equals(mode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));bubble.setAmplitude(RecorderLevel.read(recorder,clock.paused()));bubble.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);handler.postDelayed(this,100);}};
     private void process(){
         if(recorder==null)return;long duration=clock.elapsed(SystemClock.elapsedRealtime());MediaRecorder r=recorder;recorder=null;handler.removeCallbacks(tick);
         try{r.stop();}catch(RuntimeException e){r.release();journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);cancel();status("Запись слишком короткая. Говорите хотя бы секунду.");return;}r.release();
@@ -154,7 +154,7 @@ public final class GboardCompanionService extends AccessibilityService {
     }
     private void pauseRecording(){
         if(recorder==null||busy)return;
-        try{if(clock.paused()){recorder.resume();clock.resume(SystemClock.elapsedRealtime());bubble.setState(VoiceBubble.RECORDING);notification("Запись микрофона");journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.RESUMED,mode,0,-1,-1);}
+        try{if(clock.paused()){recorder.resume();RecorderLevel.read(recorder,false);clock.resume(SystemClock.elapsedRealtime());bubble.setState(VoiceBubble.RECORDING);notification("Запись микрофона");journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.RESUMED,mode,0,-1,-1);}
             else{recorder.pause();clock.pause(SystemClock.elapsedRealtime());bubble.setState(VoiceBubble.PAUSED);notification("Запись на паузе");journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.SUCCESS,mode,0,-1,-1);}}
         catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);cancel();status("Запись прервалась. Проверьте вкладку «Записи».");}
     }

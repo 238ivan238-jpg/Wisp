@@ -85,4 +85,18 @@ public class UiRenderingTest {
         render(row,"pause-retry.png",400);
     }
 
+    private void renderVoiceLevels(String name)throws Exception{
+        var app=RuntimeEnvironment.getApplication();var row=new android.widget.FrameLayout(app);row.setBackgroundColor(Ui.surface(app));row.setPadding(20,20,20,20);
+        int[] peaks={0,400,2500,20000,0};String[] names={"Тишина","Тихо","Голос","Громко","Пауза"};
+        for(int i=0;i<5;i++){
+            VoiceControls controls=new VoiceControls(app);controls.setTranslation(i==2);controls.setState(i==4?VoiceBubble.PAUSED:VoiceBubble.RECORDING);controls.setProgress(.3f);
+            for(float fraction:new float[]{.4f,.7f,1f}){controls.setAmplitude((int)(peaks[i]*fraction));android.os.SystemClock.sleep(100);}
+            var params=new android.widget.FrameLayout.LayoutParams(Ui.dp(app,64),Ui.dp(app,112));params.leftMargin=i*Ui.dp(app,72);row.addView(controls,params);
+            var label=Ui.text(app,names[i],10,Ui.foreground(app));label.setGravity(android.view.Gravity.CENTER);var lp=new android.widget.FrameLayout.LayoutParams(Ui.dp(app,64),Ui.dp(app,24));lp.leftMargin=params.leftMargin;lp.topMargin=Ui.dp(app,116);row.addView(label,lp);
+        }
+        android.os.SystemClock.sleep(250);render(row,name,440);
+    }
+    @Test @Config(qualifiers="w393dp-h852dp-notnight-420dpi") public void renderLiveVoiceLevelsLight()throws Exception{renderVoiceLevels("voice-levels-light.png");}
+    @Test @Config(qualifiers="w393dp-h852dp-night-420dpi") public void renderLiveVoiceLevelsDark()throws Exception{renderVoiceLevels("voice-levels-dark.png");}
+
 }

@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.wisp.voice",
-  "versionCode": 16,
-  "versionName": "1.0.15",
+  "versionCode": 17,
+  "versionName": "1.0.16",
   "minSdk": 28,
-  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.15.apk",
-  "sha256": "0c4c0a5c1e6f23fcfce17e0184fa3b97c6dd912de2b0f977092f8a4ce2a51783",
-  "size": 5164250,
-  "notes": "Исправлены цепочки эмодзи в конце диктовки: убрана норма количества, добавлена проверка ответа перед вставкой. Новые конечные смайлики удаляются; уместные эмодзи в начале/середине и исходные пользовательские эмодзи сохраняются. Работает для чистого текста и перевода без дополнительного запроса."
+  "apkUrl": "https://raw.githubusercontent.com/238ivan238-jpg/Wisp/codex/wisp-android-v1/downloads/Wisp-1.0.16.apk",
+  "sha256": "4e5cfc6e9d789741fe0200a818e271e3bffb41bfa6a56dc3b4e48f724bf8edd9",
+  "size": 5166254,
+  "notes": "Живой индикатор голоса: три точки в тишине превращаются в плавные полоски по реальной громкости микрофона. Громкий голос — выше, тихий — спокойнее. На паузе движение замирает. Кольцо времени, перевод EN и остановка нажатием сохранены. Работает поверх Gboard и в клавиатуре Wisp."
 }
