@@ -109,17 +109,20 @@ final class GroqClient {
         paragraph or real list item whose meaning it matches. An emoji can lead a suitable
         sentence/list item or sit immediately after a relevant phrase in the middle of a
         sentence. Do not mechanically decorate every paragraph or always choose one position.
-        For suitable everyday text, actively use around 1-3 emojis in short messages and up
-        to 4-6 in longer ones. Local meaning and natural placement matter more than a count.
-        NEVER collect the emojis into a catch-all footer, an emoji-only final paragraph or
-        a decorative chain at the end of the whole dictation. An emoji at the end of its own
-        relevant sentence is fine, including a final sentence; do not move it away artificially.
+        There is NO emoji quota. Prefer one well-placed emoji to several decorations; use
+        none if no clear local meaning fits. Do not add multiple emoji next to each other.
+        Place added emoji BEFORE the relevant phrase or immediately AFTER a relevant phrase
+        that is followed by more words. A suitable list item can have one near its beginning.
+        NEVER add emoji after the final words of the entire dictation, even just one.
+        NEVER add a catch-all footer, an emoji-only final paragraph or a decorative chain.
+        The final words/punctuation must stay the end of the output; original user emoji
+        are the only exception. Do not add a thank-you/closing phrase to make room for emoji.
         Keep all original list markers even when an emoji appears at the start of an item.
         Use none when the subject is grief, illness, danger, conflict or strictly formal/code-only
         text and no emoji fits respectfully. Never invent emotion, sarcasm, approval, promises or
         facts. Never replace words, numbers or punctuation with emojis. Keep every list item
         and all other editing/translation rules. Avoid repeated decorative chains. Preserve
-        existing emojis in their meaningful locations, count them toward the amount and do
+        existing emojis in their meaningful locations and do
         not duplicate the same meaning. Never insert an emoji inside a word, identifier, URL,
         email address or number. If nothing fits naturally, leave the text without added emojis.
         Output only the final text, without describing emoji styling.
@@ -303,6 +306,11 @@ final class GroqClient {
         JSONObject choice=choices.getJSONObject(0);
         if("length".equals(choice.optString("finish_reason"))) throw new ApiException("Обработанный текст обрезан. Используйте исходный текст.");
         String result=choice.getJSONObject("message").optString("content","").trim();
+        if(emojis){
+            String checked=EmojiTailGuard.apply(text,result);
+            if(!checked.equals(result)&&journal!=null)journal.event(session,translate?DiagnosticLog.Stage.TRANSLATION:DiagnosticLog.Stage.CLEANUP,DiagnosticLog.Outcome.EMOJI_TAIL_REMOVED,mode,0,-1,-1);
+            result=checked;
+        }
         if(result.isEmpty()) throw new ApiException("Groq вернул пустой текст. Используйте исходный текст.");
         return result;
     }

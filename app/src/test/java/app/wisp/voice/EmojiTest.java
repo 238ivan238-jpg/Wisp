@@ -8,6 +8,8 @@ import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner.class)
+@org.robolectric.annotation.Config(sdk=35)
 public class EmojiTest {
     private File audio()throws Exception{
         File f=File.createTempFile("wisp-emoji-",".m4a");f.deleteOnExit();Files.write(f.toPath(),new byte[256]);return f;
@@ -61,9 +63,9 @@ public class EmojiTest {
                 JSONObject body=new JSONObject(new String(b,StandardCharsets.UTF_8));
                 assertEquals(("translate".equals(mode)?GroqClient.TRANSLATION_PROMPT:GroqClient.PROMPT)+GroqClient.EMOJI_PROMPT,body.getJSONArray("messages").getJSONObject(0).getString("content"));
                 if(chats.incrementAndGet()==1)return new GroqClient.Response(404,"{\"error\":{\"code\":\"model_not_found\"}}");
-                assertEquals("llama-3.3-70b-versatile",body.getString("model"));return answer("Thanks! 🙏");
+                assertEquals("llama-3.3-70b-versatile",body.getString("model"));return answer("🙏 Thanks!");
             });
-            assertEquals("Thanks! 🙏",DictationPipeline.run(api,audio(),"key","auto",false,"",mode,true,s->{}).text());assertEquals(2,chats.get());
+            assertEquals("🙏 Thanks!",DictationPipeline.run(api,audio(),"key","auto",false,"",mode,true,s->{}).text());assertEquals(2,chats.get());
         }
     }
     @Test public void processingFailureReturnsOriginalWithoutAnExtraEmojiRequest()throws Exception{
@@ -78,4 +80,33 @@ public class EmojiTest {
         var result=DictationPipeline.run(api,audio(),"key","auto",false,"","raw",true,s->{throw new AssertionError("Raw mode must not process text");});
         assertEquals("Спасибо.",result.text());assertTrue(result.warning().isEmpty());
     }
+    @Test public void tailIsRemovedInBothTasksIncludingModelFallbackWithoutAnExtraChat()throws Exception{
+        for(String mode:new String[]{"clean","translate"})for(boolean fallback:new boolean[]{false,true}){
+            AtomicInteger chats=new AtomicInteger();GroqClient api=new GroqClient((p,m,k,t,b)->{
+                if(p.equals("/models"))return new GroqClient.Response(200,"{\"data\":[{\"id\":\"llama-3.3-70b-versatile\"}]}");
+                if(chats.incrementAndGet()==1&&fallback)return new GroqClient.Response(404,"{\"error\":{\"code\":\"model_not_found\"}}");
+                return answer("Отпуск 🎉 начнётся завтра. Не меняем budget! 😊🥰🔥❤️👍");
+            });
+            String result="translate".equals(mode)?api.translate("отпуск завтра budget не меняем","fixture","",true):api.clean("отпуск завтра budget не меняем","fixture","",true);
+            assertEquals("Отпуск 🎉 начнётся завтра. Не меняем budget!",result);assertEquals(fallback?2:1,chats.get());
+        }
+    }
+    @Test public void disabledStyleAndFailedCleanupNeverFilterTheOriginalUserText()throws Exception{
+        String original="Спасибо! 🙏🙏🙏";GroqClient disabled=new GroqClient((p,m,k,t,b)->answer(original));
+        assertEquals(original,disabled.clean(original,"fixture","",false));
+        GroqClient failed=new GroqClient((p,m,k,t,b)->p.equals("/audio/transcriptions")?new GroqClient.Response(200,new JSONObject().put("text",original).toString()):new GroqClient.Response(403,"{}"));
+        assertEquals(original,DictationPipeline.run(failed,audio(),"fixture","auto",false,"","clean",true,s->{}).text());
+    }
+    @Test public void anEmojiOnlyBadAnswerFallsBackToOriginalInsteadOfInsertingNothing()throws Exception{
+        GroqClient api=new GroqClient((p,m,k,t,b)->p.equals("/audio/transcriptions")?new GroqClient.Response(200,"{\"text\":\"Не меняем бюджет.\"}"):answer("😊🎉👍"));
+        var result=DictationPipeline.run(api,audio(),"fixture","auto",false,"","clean",true,s->{});
+        assertEquals("Не меняем бюджет.",result.text());assertFalse(result.warning().isEmpty());
+    }
+    @Test public void tailRemovalIsLoggedWithoutLoggingText()throws Exception{
+        var context=org.robolectric.RuntimeEnvironment.getApplication();DiagnosticLog log=new DiagnosticLog(context);
+        GroqClient api=new GroqClient((p,m,k,t,b)->answer("Личная фраза. 😊🎉"),log,DiagnosticLog.session(),"clean");
+        assertEquals("Личная фраза.",api.clean("личная фраза","fixture","",true));String report=log.report();
+        assertTrue(report.contains("EMOJI_TAIL_REMOVED"));assertFalse(report.contains("Личная фраза"));
+    }
+
 }
