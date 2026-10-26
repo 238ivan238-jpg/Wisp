@@ -109,4 +109,12 @@ public class EmojiTest {
         assertTrue(report.contains("EMOJI_TAIL_REMOVED"));assertFalse(report.contains("Личная фраза"));
     }
 
+    @Test public void everyIntensityReachesBothTasksWithoutAllowingATail()throws Exception{
+        for(var style:EmojiStyle.values())for(boolean translate:new boolean[]{false,true}){
+            AtomicInteger calls=new AtomicInteger();GroqClient client=new GroqClient((p,m,k,t,b)->{calls.incrementAndGet();String prompt=new JSONObject(new String(b,StandardCharsets.UTF_8)).getJSONArray("messages").getJSONObject(0).getString("content");assertTrue(prompt.contains(GroqClient.EMOJI_PROMPT));assertTrue(prompt.contains(style.instruction));return answer("🎉 Отпуск начнётся завтра. 😊😊😊");});
+            String text=translate?client.translate("отпуск завтра","fixture","",true,style):client.clean("отпуск завтра","fixture","",true,style);
+            assertEquals("🎉 Отпуск начнётся завтра.",text);assertEquals(1,calls.get());
+        }
+    }
+
 }

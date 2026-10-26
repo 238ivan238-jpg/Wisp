@@ -130,4 +130,10 @@ public class GroqClientTest {
         speechOnly.checkAccess("fixture",false,false);assertThrows(GroqClient.ApiException.class,()->speechOnly.checkAccess("fixture",false,true));
     }
 
+    @Test public void chunkWaveformUsesWavNameAndMimeWithoutSendingLocalPaths()throws Exception{
+        java.io.File file=java.io.File.createTempFile("private-chunk-",".wav");try{
+            java.nio.file.Files.write(file.toPath(),new byte[256]);GroqClient client=new GroqClient((p,m,k,t,body)->{String multipart=new String(body,java.nio.charset.StandardCharsets.ISO_8859_1);assertTrue(multipart.contains("filename=\"dictation.wav\""));assertTrue(multipart.contains("Content-Type: audio/wav"));assertFalse(multipart.contains(file.getAbsolutePath()));return new GroqClient.Response(200,"{\"text\":\"Text.\"}");});assertEquals("Text.",client.transcribe(file,"fixture","auto"));
+        }finally{file.delete();}
+    }
+
 }

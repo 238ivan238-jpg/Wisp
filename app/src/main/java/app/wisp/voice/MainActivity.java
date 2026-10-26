@@ -29,7 +29,7 @@ public final class MainActivity extends Activity {
         super.onCreate(state);settings=new SecureSettings(this);initial=state;
         screen("updates"); // Keep auto-check and installer resumption independent of the visible tab.
         String selected=state==null?sectionName(getIntent().getIntExtra(AppNavigation.EXTRA_SECTION,0)):state.getString("main_page","voice");
-        showPage(Set.of("voice","dictionary","settings","connection","key","updates","legacy").contains(selected)?selected:"voice");
+        showPage(Set.of("voice","dictionary","settings","connection","key","updates","legacy","quick").contains(selected)?selected:"voice");
     }
     private String sectionName(int section){return section==AppNavigation.DICTIONARY?"dictionary":section==AppNavigation.SETTINGS?"settings":"voice";}
     void showSection(int section){showPage(sectionName(section));}
@@ -45,11 +45,11 @@ public final class MainActivity extends Activity {
         if(!Set.of("voice","settings").contains(name)){
             Button back=Ui.button(this,"‹ Настройки",false);page.addView(back,Ui.fill(this,48));back.setOnClickListener(v->showPage("settings"));Ui.gap(page,16);
         }
-        String title=switch(name){case "dictionary"->"Словарь";case "settings"->"Настройки";case "connection"->"Подключение";case "key"->"Ключ Groq";case "updates"->"Обновления";case "legacy"->"Клавиатура Wisp";default->"Голос";};
+        String title=switch(name){case "dictionary"->"Словарь";case "settings"->"Настройки";case "connection"->"Подключение";case "key"->"Ключ Groq";case "updates"->"Обновления";case "quick"->"Быстрый доступ";case "legacy"->"Клавиатура Wisp";default->"Голос";};
         page.addView(Ui.bold(this,title,26,Ui.foreground(this)));Ui.gap(page,16);
         switch(name){
             case "voice"->voice(page);case "dictionary"->dictionary(page);case "settings"->preferences(page);
-            case "connection"->connection(page);case "key"->key(page);case "legacy"->legacy(page);
+            case "connection"->connection(page);case "key"->key(page);case "legacy"->legacy(page);case "quick"->quick(page);
             case "updates"->updates=new UpdateController(this,page,initial);
         }
         return scroll;
@@ -61,8 +61,10 @@ public final class MainActivity extends Activity {
         language.setOnClickListener(v->{String lang=settings.language();settings.setLanguage(lang.equals("auto")?"ru":lang.equals("ru")?"en":"auto");language.setText(languageLabel());});Ui.gap(page,12);
         Switch cleanup=toggle(page,"Чистый текст",!settings.mode().equals("raw"));hint(page,"Исправления, пунктуация и списки.");
         Switch emojis=toggle(page,"Добавлять эмодзи",settings.emojis());hint(page,"Эмодзи рядом с подходящими фразами и пунктами.");
+        Button intensity=Ui.button(this,"Эмодзи: "+settings.emojiStyle().label,false);intensity.setTag("emoji_intensity");intensity.setEnabled(settings.emojis());page.addView(intensity,Ui.fill(this,48));Ui.gap(page,8);
+        intensity.setOnClickListener(v->{EmojiStyle[] styles=EmojiStyle.values();new android.app.AlertDialog.Builder(this).setTitle("Интенсивность эмодзи").setSingleChoiceItems(java.util.Arrays.stream(styles).map(s->s.label).toArray(String[]::new),settings.emojiStyle().ordinal(),(dialog,which)->{settings.setEmojiStyle(styles[which]);intensity.setText("Эмодзи: "+styles[which].label);dialog.dismiss();}).setNegativeButton("Отмена",null).show();});
         cleanup.setOnCheckedChangeListener((b,on)->{if(!on)emojis.setChecked(false);settings.setMode(on?"clean":"raw");});
-        emojis.setOnCheckedChangeListener((b,on)->{if(on)cleanup.setChecked(true);settings.setEmojis(on);});
+        emojis.setOnCheckedChangeListener((b,on)->{if(on)cleanup.setChecked(true);settings.setEmojis(on);intensity.setEnabled(on);});
         Switch turbo=toggle(page,"Быстрый Whisper Turbo",settings.turbo());turbo.setOnCheckedChangeListener((b,on)->settings.setTurbo(on));hint(page,"По умолчанию — Whisper Large v3.");Ui.gap(page,12);
         page.addView(Ui.bold(this,"Перевод — по кнопке EN",14,Ui.foreground(this)));hint(page,"Микрофон — без перевода. EN — на английский. Во время записи нижняя кнопка — пауза и продолжение.");
     }
@@ -79,7 +81,7 @@ public final class MainActivity extends Activity {
         page.addView(row,Ui.fill(this,56));row.setOnClickListener(v->action.run());View line=new View(this);line.setBackgroundColor(Ui.border(this));page.addView(line,Ui.fill(this,1));
     }
     private void preferences(LinearLayout page){
-        link(page,"Словарь",()->showPage("dictionary"));
+        link(page,"Словарь",()->showPage("dictionary"));link(page,"Шторка и гарнитура",()->showPage("quick"));
         link(page,"Подключение",()->showPage("connection"));link(page,"Ключ Groq",()->showPage("key"));
         link(page,"Обновления",()->showPage("updates"));link(page,"Клавиатура Wisp",()->showPage("legacy"));
     }
@@ -97,6 +99,17 @@ public final class MainActivity extends Activity {
         hint(help,"Если включение заблокировано: сведения о Wisp → ⋮ → «Разрешить ограниченные настройки». Затем включите службу ещё раз.");
         Button access=Ui.button(this,"Открыть сведения о Wisp",false);help.addView(access,Ui.fill(this,48));access.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()))));
         Ui.disclosure(page,"Помощь с подключением",help);
+    }
+    private void quick(LinearLayout page){
+        Button tile=Ui.button(this,"Добавить Wisp в шторку",false);page.addView(tile,Ui.fill(this,48));Ui.gap(page,8);
+        tile.setOnClickListener(v->{try{if(android.os.Build.VERSION.SDK_INT>=33){getSystemService(android.app.StatusBarManager.class).requestAddTileService(new android.content.ComponentName(this,WispTileService.class),"Wisp",android.graphics.drawable.Icon.createWithResource(this,R.drawable.ic_mic_notification),getMainExecutor(),result->{if(result==android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED)Toast.makeText(this,"Плитка Wisp уже добавлена",Toast.LENGTH_SHORT).show();});}else Toast.makeText(this,"Откройте шторку → Изменить плитки → Wisp",Toast.LENGTH_LONG).show();}catch(RuntimeException unavailable){Toast.makeText(this,"Добавьте Wisp через «Изменить плитки» в шторке Android",Toast.LENGTH_LONG).show();}});
+        hint(page,"Плитка показывает или скрывает микрофон поверх Gboard. Первый запуск службы — в «Подключении».");
+        Switch visible=toggle(page,"Показывать микрофон",settings.companionVisible());visible.setOnCheckedChangeListener((b,on)->{settings.setCompanionVisible(on);CompanionControl.changed();WispTileService.update(this);});
+        Switch headset=toggle(page,"Предпочитать микрофон гарнитуры",settings.preferHeadset());
+        headset.setOnCheckedChangeListener((b,on)->{settings.setPreferHeadset(on);if(on&&android.os.Build.VERSION.SDK_INT>=31&&checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT},41);});
+        hint(page,"Проводная и USB-гарнитура — при наличии. Bluetooth на Android 12+ требует разрешения «Устройства поблизости». Без доступной гарнитуры остаётся системный микрофон.");
+        Switch buttons=toggle(page,"Кнопка гарнитуры",settings.headsetButtons());buttons.setOnCheckedChangeListener((b,on)->{settings.setHeadsetButtons(on);CompanionControl.changed();});
+        hint(page,"Нажатие — запись/завершение, на паузе — продолжение. Работает при открытом текстовом поле. Если Android передал кнопку музыкальному плееру, Wisp её не перехватывает.");
     }
     private void legacy(LinearLayout page){
         hint(page,"Запасной вариант для Android 9+. Заменяет Gboard на время диктовки.");

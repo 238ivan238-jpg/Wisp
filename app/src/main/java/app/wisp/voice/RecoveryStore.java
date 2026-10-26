@@ -24,7 +24,13 @@ final class RecoveryStore {
         final long time,duration;
         final boolean turbo,emojis;
         String original="",text="",error="",trace="";
-        boolean handed;
+        boolean handed,speechCounted,recognitionCounted,editingCounted;
+        EmojiStyle style=EmojiStyle.MODERATE;
+        long recognitionMs;
+        int partCount;
+        final List<Part> parts=new ArrayList<>();
+        record Part(String hash,String text){}
+        String availableText(){return !original.isEmpty()?original:String.join("\n",parts.stream().map(Part::text).toList());}
         Entry(String id,long time,long duration,String mode,String language,String vocabulary,boolean turbo,boolean emojis){this.id=id;this.trace=id;this.time=time;this.duration=duration;this.mode=mode;this.language=language;this.vocabulary=vocabulary;this.turbo=turbo;this.emojis=emojis;}
     }
     private final File directory;
@@ -62,7 +68,7 @@ final class RecoveryStore {
     }
     Entry create(File audio,long time,long duration,String mode,SecureSettings settings,String trace)throws Exception{
         synchronized(LOCK){Entry e=create(audio,time,duration,mode,settings.language(),settings.vocabulary(),settings.turbo(),settings.emojis());
-            if(trace.matches("[a-f0-9-]{36}")){e.trace=trace;save(e);}return e;}
+            e.style=settings.emojiStyle();if(trace.matches("[a-f0-9-]{36}"))e.trace=trace;save(e);return e;}
     }
     Entry create(File audio,long time,long duration,String mode,String language,String vocabulary,boolean turbo,boolean emojis)throws Exception{
         synchronized(LOCK){
@@ -76,9 +82,10 @@ final class RecoveryStore {
     }
     void save(Entry e)throws Exception{
         synchronized(LOCK){
+            org.json.JSONArray parts=new org.json.JSONArray();for(var part:e.parts)parts.put(new JSONObject().put("hash",part.hash()).put("text",part.text()));
             JSONObject json=new JSONObject().put("id",e.id).put("time",e.time).put("duration",e.duration).put("mode",e.mode)
                 .put("language",e.language).put("vocabulary",e.vocabulary).put("turbo",e.turbo).put("emojis",e.emojis)
-                .put("trace",e.trace).put("original",e.original).put("text",e.text).put("error",e.error).put("handed",e.handed);
+                .put("trace",e.trace).put("original",e.original).put("text",e.text).put("error",e.error).put("handed",e.handed).put("style",e.style.code).put("parts",parts).put("partCount",e.partCount).put("recognitionMs",e.recognitionMs).put("speechCounted",e.speechCounted).put("recognitionCounted",e.recognitionCounted).put("editingCounted",e.editingCounted);
             write(path(e.id,".json"),json.toString().getBytes(StandardCharsets.UTF_8));
         }
     }
@@ -86,7 +93,8 @@ final class RecoveryStore {
         synchronized(LOCK){
             JSONObject j=new JSONObject(new String(read(path(id,".json")),StandardCharsets.UTF_8));
             Entry e=new Entry(id,j.getLong("time"),j.getLong("duration"),j.getString("mode"),j.getString("language"),j.getString("vocabulary"),j.getBoolean("turbo"),j.getBoolean("emojis"));
-            e.trace=j.optString("trace",e.id);e.original=j.optString("original");e.text=j.optString("text");e.error=j.optString("error");e.handed=j.optBoolean("handed");return e;
+            e.trace=j.optString("trace",e.id);e.original=j.optString("original");e.text=j.optString("text");e.error=j.optString("error");e.handed=j.optBoolean("handed");e.style=EmojiStyle.parse(j.optString("style"));e.partCount=j.optInt("partCount");e.recognitionMs=j.optLong("recognitionMs");e.speechCounted=j.optBoolean("speechCounted");e.recognitionCounted=j.optBoolean("recognitionCounted");e.editingCounted=j.optBoolean("editingCounted");
+            var parts=j.optJSONArray("parts");if(parts!=null)for(int i=0;i<parts.length();i++){var part=parts.getJSONObject(i);e.parts.add(new Entry.Part(part.getString("hash"),part.getString("text")));}return e;
         }
     }
     List<Entry> list()throws Exception{

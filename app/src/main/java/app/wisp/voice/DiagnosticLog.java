@@ -60,20 +60,25 @@ final class DiagnosticLog {
         }catch(Exception ignored){/* Logging must never break input or replace the original failure. */}}
     }
     private static String safeClass(String value){return value!=null&&value.matches("[A-Za-z0-9_.$<>]{1,180}")?value:"unknown";}
-    String report()throws Exception{
+    String report()throws Exception{return report("");}
+    String report(String session)throws Exception{
+        if(!session.isEmpty()&&!session.matches("[a-f0-9-]{36}"))throw new IllegalArgumentException("Invalid session");
         synchronized(LOCK){
+            JSONArray events=read(),filtered=new JSONArray();
+            for(int i=0;i<events.length();i++){JSONObject e=events.getJSONObject(i);if(session.isEmpty()||session.equals(e.optString("session")))filtered.put(e);}
             return new JSONObject().put("reportVersion",1).put("exportedAtUtc",Instant.now().toString()).put("appVersion",version)
-                .put("androidSdk",Build.VERSION.SDK_INT).put("events",read()).toString(2);
+                .put("androidSdk",Build.VERSION.SDK_INT).put("events",filtered).put("sessionFilter",session).toString(2);
         }
     }
     JSONArray events(){synchronized(LOCK){return read();}}
     private File directory(){return new File(context.getCacheDir(),"diagnostics");}
-    File export()throws Exception{
+    File export()throws Exception{return export("");}
+    File export(String session)throws Exception{
         File dir=directory();if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("Cannot create diagnostics directory");
         File[] files=dir.listFiles((d,name)->name.endsWith(".json"));
         if(files!=null){Arrays.sort(files,Comparator.comparingLong(File::lastModified).reversed());for(int i=4;i<files.length;i++)files[i].delete();}
         File file=File.createTempFile("Wisp-diagnostics-",".json",dir);
-        try(OutputStream out=new FileOutputStream(file)){out.write(report().getBytes(StandardCharsets.UTF_8));}return file;
+        try(OutputStream out=new FileOutputStream(file)){out.write(report(session).getBytes(StandardCharsets.UTF_8));}return file;
     }
     static Intent shareIntent(Context context,File file){
         android.net.Uri uri=FileProvider.getUriForFile(context,context.getPackageName()+".diagnostics",file);

@@ -57,6 +57,14 @@ final class SecureSettings {
         if(v&&"raw".equals(mode()))edit.putString("mode","clean");
         edit.apply();
     }
+    EmojiStyle emojiStyle(){return EmojiStyle.parse(prefs.getString("emoji_intensity","moderate"));}
+    void setEmojiStyle(EmojiStyle value){prefs.edit().putString("emoji_intensity",value.code).apply();}
+    boolean companionVisible(){return prefs.getBoolean("companion_visible",true);}
+    void setCompanionVisible(boolean value){prefs.edit().putBoolean("companion_visible",value).apply();}
+    boolean preferHeadset(){return prefs.getBoolean("prefer_headset",false);}
+    void setPreferHeadset(boolean value){prefs.edit().putBoolean("prefer_headset",value).apply();}
+    boolean headsetButtons(){return prefs.getBoolean("headset_buttons",false);}
+    void setHeadsetButtons(boolean value){prefs.edit().putBoolean("headset_buttons",value).apply();}
     String vocabulary() { return prefs.getString("vocab", ""); }
     void setVocabulary(String v) { prefs.edit().putString("vocab",v.trim()).apply(); }
     boolean turbo() { return prefs.getBoolean("turbo",false); }

@@ -23,10 +23,12 @@ import java.util.concurrent.*;
 
 /** Enabled only on API 33+: uses accessibility's separate input connection alongside Gboard. */
 @TargetApi(33)
-public final class GboardCompanionService extends AccessibilityService {
+public final class GboardCompanionService extends AccessibilityService implements CompanionControl.Listener {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private SecureSettings settings;
+    private HeadsetRoute route;
+    private HeadsetButtons headset;
     private RecoveryStore recovery;
     private RecoveryStore.Entry draft;
     private String detachedRecovery="";
@@ -49,7 +51,7 @@ public final class GboardCompanionService extends AccessibilityService {
     private String trace="",mode="clean";
     private float downX,downY;
     private int initialX,initialY;
-    @Override public void onCreate(){super.onCreate();settings=new SecureSettings(this);stats=new UsageStats(this);journal=new DiagnosticLog(this);recovery=new RecoveryStore(this);preflight=client->ConnectionCheck.check(this,settings,client);windows=getSystemService(WindowManager.class);
+    @Override public void onCreate(){super.onCreate();settings=new SecureSettings(this);stats=new UsageStats(this);journal=new DiagnosticLog(this);CompanionControl.attach(this);headset=new HeadsetButtons(this,new HeadsetButtons.Actions(){public void toggle(){if(!allowed()||busy)return;if(recorder!=null){if(clock.paused())pauseRecording();else process();}else start(false);}public void pause(){if(allowed()&&recorder!=null&&!clock.paused())pauseRecording();}public void stop(){if(allowed()&&recorder!=null)process();}public void play(){if(!allowed()||busy)return;if(recorder==null)start(false);else if(clock.paused())pauseRecording();}});recovery=new RecoveryStore(this);preflight=client->ConnectionCheck.check(this,settings,client);windows=getSystemService(WindowManager.class);
         File[] stale=getCacheDir().listFiles((d,n)->n.startsWith("wisp-floating-")&&n.endsWith(".m4a"));if(stale!=null)for(File f:stale)f.delete();}
     @Override public InputMethod onCreateInputMethod(){return new InputMethod(this){
         @Override public void onStartInput(EditorInfo info,boolean restarting){
@@ -60,11 +62,11 @@ public final class GboardCompanionService extends AccessibilityService {
         @Override public void onFinishInput(){editor=null;cancel();hide();}
     };}
     @Override public void onAccessibilityEvent(AccessibilityEvent event){refresh();}
-    @Override public void onServiceConnected(){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.OVERLAY,DiagnosticLog.Outcome.START,settings.mode(),0,-1,-1);createBubble();refresh();}
+    @Override public void onServiceConnected(){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.OVERLAY,DiagnosticLog.Outcome.START,settings.mode(),0,-1,-1);createBubble();refresh();WispTileService.update(this);}
     @Override public void onInterrupt(){cancel();hide();}
     private boolean allowed(){
         String selected=Settings.Secure.getString(getContentResolver(),Settings.Secure.DEFAULT_INPUT_METHOD);
-        return editor!=null&&!DictationText.sensitive(editor.inputType)&&editor.inputType!=0
+        return settings.companionVisible()&&editor!=null&&!DictationText.sensitive(editor.inputType)&&editor.inputType!=0
             &&!getSystemService(KeyguardManager.class).isKeyguardLocked()
             &&(selected==null||!selected.startsWith(getPackageName()+"/"));
     }
@@ -94,7 +96,10 @@ public final class GboardCompanionService extends AccessibilityService {
     private void updatePosition(){
         if(bubbleShown)windows.updateViewLayout(bubble,bubbleParams);if(labelShown){labelParams.x=Math.max(Ui.dp(this,8),Math.min(bounds().width()-labelParams.width-Ui.dp(this,8),bubbleParams.x+Ui.dp(this,32)-labelParams.width/2));labelParams.y=Math.max(safe().top+Ui.dp(this,8),bubbleParams.y-Ui.dp(this,76));windows.updateViewLayout(label,labelParams);}
     }
+    @Override public void changed(){handler.post(this::refresh);}
+    private void headsetState(){if(headset!=null)headset.update(settings.headsetButtons()&&allowed()&&!busy,recorder!=null,clock.paused());}
     private void refresh(){
+        headsetState();
         if(bubble==null)return;
         if(!allowed()){cancel();hide();return;}
         if(!busy&&recorder==null)bubble.setRetry(draft!=null&&!draft.handed||!detachedRecovery.isEmpty());
@@ -115,13 +120,21 @@ public final class GboardCompanionService extends AccessibilityService {
             if(getInputMethod()==null||getInputMethod().getCurrentInputConnection()==null){status("Поле не готово. Коснитесь его и попробуйте ещё раз.");return;}
         }catch(RuntimeException e){journal.failure(DiagnosticLog.session(),DiagnosticLog.Stage.INSERTION,settings.mode(),e);status("Поле не готово к вставке. Коснитесь его и попробуйте ещё раз.");return;}
         cancel();detachedRecovery="";bubble.setRetry(false);trace=DiagnosticLog.session();mode=settings.modeForRecording(english);bubble.setTranslation(english);
-        busy=true;bubble.setEnabled(false);bubble.setState(VoiceBubble.WORKING);status("Проверяю подключение…");
+        busy=true;headsetState();bubble.setEnabled(false);bubble.setState(VoiceBubble.WORKING);status("Проверяю подключение…");
         try{notification("Проверка подключения");}catch(RuntimeException e){done();status("Нет доступа к микрофону. Проверьте разрешение.");return;}
         int token=generation;String checkTrace=trace,checkMode=mode;
         GroqClient client=GroqClient.preflight(journal,checkTrace,checkMode);api=client;
         journal.event(trace,DiagnosticLog.Stage.PREFLIGHT,ConnectionCheck.vpn(this)?DiagnosticLog.Outcome.VPN_ACTIVE:DiagnosticLog.Outcome.VPN_INACTIVE,mode,0,-1,-1);
-        request=worker.submit(()->{try{preflight.check(client);journal.event(checkTrace,DiagnosticLog.Stage.PREFLIGHT,DiagnosticLog.Outcome.SUCCESS,checkMode,0,-1,-1);post(token,()->{busy=false;api=null;beginRecording(english);});}
+        request=worker.submit(()->{try{preflight.check(client);journal.event(checkTrace,DiagnosticLog.Stage.PREFLIGHT,DiagnosticLog.Outcome.SUCCESS,checkMode,0,-1,-1);post(token,()->{busy=false;api=null;prepareInput(english);});}
             catch(Exception e){journal.failure(checkTrace,DiagnosticLog.Stage.PREFLIGHT,checkMode,e);post(token,()->{done();status(ConnectionCheck.error(e));});}});
+    }
+    private void prepareInput(boolean english){
+        busy=true;headsetState();route=new HeadsetRoute(this,settings.preferHeadset());int token=generation;
+        if(settings.preferHeadset())status("Подключаю микрофон гарнитуры…");
+        route.whenReady(handler,ready->{if(token!=generation)return;busy=false;
+            if(!ready){cancel();status("Гарнитура не подключилась. Проверьте её или выключите предпочтение в настройках.");return;}
+            beginRecording(english);
+        });
     }
     private void beginRecording(boolean english){
         if(!allowed()){cancel();return;}
@@ -129,11 +142,11 @@ public final class GboardCompanionService extends AccessibilityService {
         try{
             notification(english?"Запись для перевода на английский":"Запись микрофона");
             audio=File.createTempFile("wisp-floating-",".m4a",getCacheDir());recorder=new MediaRecorder(this);
-            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            recorder.setAudioSource(route.source());route.apply(recorder);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
             recorder.setAudioChannels(1);recorder.setAudioSamplingRate(16000);recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(RecordingLimits.MAX_DURATION_MS);
             recorder.setOnInfoListener((r,what,extra)->{if(what==MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED)process();});
             recorder.setOnErrorListener((r,what,extra)->{stats.recordFailure("microphone");journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.FAILURE,mode,0,-1,-1);cancel();status("Запись прервалась. Попробуйте ещё раз.");});
-            recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();clock.start(started);bubble.setEnabled(true);bubble.setState(VoiceBubble.RECORDING);handler.post(tick);
+            recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();clock.start(started);bubble.setEnabled(true);bubble.setState(VoiceBubble.RECORDING);handler.post(tick);headsetState();
         }catch(Exception e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);stats.recordFailure("microphone");cancel();status("Не удалось включить микрофон. Проверьте разрешение записи и службу Wisp.");}
     }
     private void notification(String text){
@@ -145,7 +158,7 @@ public final class GboardCompanionService extends AccessibilityService {
     private final Runnable tick=new Runnable(){public void run(){if(!allowed()){cancel();hide();return;}if(recorder==null)return;long elapsed=clock.elapsed(SystemClock.elapsedRealtime());if(elapsed>=RecordingLimits.MAX_DURATION_MS){process();return;}long seconds=elapsed/1000;status((clock.paused()?"Пауза · ":"")+("translate".equals(mode)?"EN · ":"")+String.format(Locale.ROOT,"%02d:%02d / %02d:%02d",seconds/60,seconds%60,RecordingLimits.MAX_SECONDS/60,RecordingLimits.MAX_SECONDS%60));bubble.setAmplitude(RecorderLevel.read(recorder,clock.paused()));bubble.setProgress(seconds/(float)RecordingLimits.MAX_SECONDS);handler.postDelayed(this,100);}};
     private void process(){
         if(recorder==null)return;long duration=clock.elapsed(SystemClock.elapsedRealtime());MediaRecorder r=recorder;recorder=null;handler.removeCallbacks(tick);
-        try{r.stop();}catch(RuntimeException e){r.release();journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);cancel();status("Запись слишком короткая. Говорите хотя бы секунду.");return;}r.release();
+        try{r.stop();}catch(RuntimeException e){r.release();journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);cancel();status("Запись слишком короткая. Говорите хотя бы секунду.");return;}r.release();if(route!=null){route.close();route=null;}
         if(duration<650){cancel();status("Запись слишком короткая. Говорите хотя бы секунду.");return;}
         stats.recordUse(sessionTime,duration);journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.SUCCESS,mode,duration,-1,-1);
         try{draft=recovery.create(audio,sessionTime,duration,mode,settings,trace);audio.delete();audio=null;}
@@ -157,18 +170,23 @@ public final class GboardCompanionService extends AccessibilityService {
         try{if(clock.paused()){recorder.resume();RecorderLevel.read(recorder,false);clock.resume(SystemClock.elapsedRealtime());bubble.setState(VoiceBubble.RECORDING);notification("Запись микрофона");journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.RESUMED,mode,0,-1,-1);}
             else{recorder.pause();clock.pause(SystemClock.elapsedRealtime());bubble.setState(VoiceBubble.PAUSED);notification("Запись на паузе");journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.SUCCESS,mode,0,-1,-1);}}
         catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);cancel();status("Запись прервалась. Проверьте вкладку «Записи».");}
+        headsetState();
     }
     private void openRecovery(){startActivity(new Intent(this,RecoveryActivity.class).putExtra("recovery_id",detachedRecovery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
     private void retry(){if(busy||recorder!=null||draft==null||draft.handed||!allowed())return;submitDraft();}
     private void submitDraft(){
-        busy=true;bubble.setRetry(false);bubble.setEnabled(false);bubble.setTranslation("translate".equals(draft.mode));bubble.setState(VoiceBubble.WORKING);status("Обрабатываю запись…");
+        busy=true;headsetState();bubble.setRetry(false);bubble.setEnabled(false);bubble.setTranslation("translate".equals(draft.mode));bubble.setState(VoiceBubble.WORKING);status("Обрабатываю запись…");
         try{notification("Обработка диктовки");}catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,mode,e);done();offerRetry("Запись сохранена. Откройте Wisp → Записи.");return;}
         int token=generation;RecoveryStore.Entry entry=draft;String taskMode=entry.mode,taskTrace=trace;long when=entry.time;
         GroqClient client=new GroqClient(journal,taskTrace,taskMode);api=client;
         request=worker.submit(()->{try{
             // A cached finished result needs no network; it can go straight to insertion.
             String key=entry.text.isEmpty()||!entry.error.isEmpty()?settings.readKey():"";
-            var result=RecoveryJob.run(recovery,entry,getCacheDir(),client,key,s->post(token,()->status("translate".equals(taskMode)?"Перевожу на английский…":"Обрабатываю текст…")));
+            var result=RecoveryJob.run(recovery,entry,getCacheDir(),client,key,new RecoveryJob.Observer(){
+                public void progress(JobProgress progress){post(token,()->{status(progress.label());bubble.setWorkingLabel(progress.label());});}
+                public void speech(RecoveryStore.Entry e){stats.recordSpeech(e.time,e.original,e.duration);}
+                public void timing(RecoveryStore.Entry e,UsageStats.WaitStage stage,long ms){stats.recordWait(e.time,stage,ms);}
+            });
             post(token,()->deliver(result,when,taskMode,taskTrace));
         }catch(Exception e){journal.failure(taskTrace,DiagnosticLog.Stage.RECOVERY,taskMode,e);post(token,()->{stats.recordFailure(GroqClient.failureCategory(e));done();offerRetry(ConnectionCheck.error(e)+" Нажмите ↻.");});}});
     }
@@ -185,7 +203,8 @@ public final class GboardCompanionService extends AccessibilityService {
     }
     private void post(int token,Runnable action){handler.post(()->{if(token!=generation)return;if(!allowed()){cancel();hide();return;}action.run();});}
     private void deliver(DictationPipeline.Result result,long when,String taskMode,String taskTrace){
-        if(!allowed()){cancel();return;}done();if(!result.errorCategory().isEmpty())stats.recordFailure(result.errorCategory());
+        if(!allowed()){cancel();return;}busy=true;headsetState();bubble.setEnabled(false);bubble.setState(VoiceBubble.WORKING);bubble.setWorkingLabel("Вставляю текст…");status("Вставляю текст…");
+        try{if(!result.errorCategory().isEmpty())stats.recordFailure(result.errorCategory());
         var input=getInputMethod();var connection=input==null?null:input.getCurrentInputConnection();
         if(connection==null){insertionFailure(taskTrace,taskMode,null);return;}
         if(!handoff())return;
@@ -205,20 +224,23 @@ public final class GboardCompanionService extends AccessibilityService {
                 return;
             }
             stats.recordInsertion(when,result.original(),result.text(),taskMode,result.warning().isEmpty());journal.event(taskTrace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.SUCCESS,taskMode,0,UsageStats.words(result.original()),UsageStats.words(result.text()));
-            insertionSaved(true,result.warning().isEmpty());status(result.warning().isEmpty()?"":"Вставлен исходный текст. Обработка — во вкладке «Записи».");
+            insertionSaved(true,result.warning().isEmpty());status(result.warning().isEmpty()?"Текст вставлен.":"Вставлен исходный текст. Обработка — во вкладке «Записи».");
+            if(result.warning().isEmpty()){int token=generation;handler.postDelayed(()->{if(token==generation&&!busy&&recorder==null&&"Текст вставлен.".contentEquals(label.getText()))status("");},1800);}
         }catch(RuntimeException e){insertionFailure(taskTrace,taskMode,e);}
+        }finally{String message=label==null?"":label.getText().toString();done();bubble.setRetry(draft!=null&&!draft.handed);status(message);}
     }
     private void insertionFailure(String taskTrace,String taskMode,Exception e){stats.recordFailure("input");if(e!=null)journal.failure(taskTrace,DiagnosticLog.Stage.INSERTION,taskMode,e);else journal.event(taskTrace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.FAILURE,taskMode,0,-1,-1);offerRetry(draft!=null&&!draft.handed?"Текст сохранён. Коснитесь поля и нажмите ↻.":"Проверьте поле. Копия текста — Wisp → Записи.");}
-    private void done(){busy=false;if(foreground){stopForeground(STOP_FOREGROUND_REMOVE);foreground=false;}if(bubble!=null){bubble.setRetry(false);bubble.setEnabled(true);bubble.setTranslation(false);bubble.setState(VoiceBubble.IDLE);bubble.setProgress(0);}status("");}
+    private void done(){busy=false;if(foreground){stopForeground(STOP_FOREGROUND_REMOVE);foreground=false;}if(bubble!=null){bubble.setRetry(false);bubble.setEnabled(true);bubble.setTranslation(false);bubble.setState(VoiceBubble.IDLE);bubble.setProgress(0);}headsetState();status("");}
     private void cancel(){
         if(recorder!=null||busy)journal.event(trace,DiagnosticLog.Stage.LIFECYCLE,DiagnosticLog.Outcome.CANCELLED,mode,0,-1,-1);
         if(draft!=null&&!draft.handed)detachedRecovery=draft.id;
         generation++;handler.removeCallbacksAndMessages(null);
         if(recorder!=null){boolean valid=false;try{recorder.stop();valid=true;}catch(RuntimeException ignored){}recorder.release();recorder=null;
             long duration=clock.elapsed(SystemClock.elapsedRealtime());if(valid&&duration>=650&&audio!=null)try{detachedRecovery=recovery.create(audio,sessionTime,duration,mode,settings,trace).id;}catch(Exception e){journal.failure(trace,DiagnosticLog.Stage.RECOVERY,mode,e);}}
+        if(route!=null){route.close();route=null;}
         if(request!=null){request.cancel(true);request=null;}if(api!=null){api.cancel();api=null;}if(audio!=null){audio.delete();audio=null;}draft=null;done();
     }
     @Override public void onConfigurationChanged(Configuration c){cancel();hide();super.onConfigurationChanged(c);createBubble();refresh();}
     @Override public boolean onUnbind(Intent intent){editor=null;cancel();hide();return super.onUnbind(intent);}
-    @Override public void onDestroy(){editor=null;cancel();hide();worker.shutdownNow();super.onDestroy();}
+    @Override public void onDestroy(){editor=null;cancel();hide();if(headset!=null)headset.close();CompanionControl.detach(this);WispTileService.update(this);worker.shutdownNow();super.onDestroy();}
 }

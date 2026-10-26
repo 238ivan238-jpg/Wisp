@@ -16,6 +16,7 @@ final class VoiceControls extends FrameLayout {
     private final Paint connector=new Paint(Paint.ANTI_ALIAS_FLAG);
     private int state=VoiceBubble.IDLE;
     private boolean translation,retry;
+    private float pressX,pressY;
     VoiceControls(Context context){
         super(context);setWillNotDraw(false);setClipChildren(false);setClipToPadding(false);
         microphone=new VoiceBubble(context);addView(microphone,new LayoutParams(Ui.dp(context,64),Ui.dp(context,64)));
@@ -26,7 +27,18 @@ final class VoiceControls extends FrameLayout {
         lower.topMargin=Ui.dp(context,64);addView(english,lower);setState(VoiceBubble.IDLE);
     }
     void setActions(Runnable normal,Runnable translated){microphone.setOnClickListener(v->normal.run());english.setOnClickListener(v->translated.run());}
-    void setGestureListener(View.OnTouchListener listener){microphone.setOnTouchListener(listener);english.setOnTouchListener(listener);}
+    void setGestureListener(View.OnTouchListener listener){
+        View.OnTouchListener animated=(view,event)->{
+            int action=event.getActionMasked();
+            if(action==android.view.MotionEvent.ACTION_DOWN){pressX=event.getRawX();pressY=event.getRawY();UiMotion.press(view,true);}
+            else if(action==android.view.MotionEvent.ACTION_UP||action==android.view.MotionEvent.ACTION_CANCEL)UiMotion.press(view,false);
+            else if(action==android.view.MotionEvent.ACTION_MOVE&&Math.hypot(event.getRawX()-pressX,event.getRawY()-pressY)>android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop())UiMotion.press(view,false);
+            return listener.onTouch(view,event);
+        };
+        microphone.setOnTouchListener(animated);english.setOnTouchListener(animated);
+    }
+    void setWorkingLabel(String value){microphone.setContentDescription(value);english.setContentDescription(value);}
+    @Override protected void onDetachedFromWindow(){UiMotion.reset(microphone);UiMotion.reset(english);super.onDetachedFromWindow();}
     void setTranslation(boolean value){translation=value;microphone.setTranslation(value);setState(state);}
     void setState(int value){
         state=value;microphone.setState(value);

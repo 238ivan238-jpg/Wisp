@@ -30,6 +30,12 @@ public final class StatsActivity extends Activity {
         String[] titles={"Диктовки","Слова","Минуты"};
         for(int i=0;i<titles.length;i++){final int choice=i;Button b=Ui.button(this,titles[i],metric==i);metrics.addView(b,new LinearLayout.LayoutParams(0,Ui.dp(this,48),1));b.setOnClickListener(v->{metric=choice;render();});}
         graph.addView(new UsageChart(this,snapshot,days,metric),Ui.fill(this,200));
+        UsageStats.Performance performance=stats.performance(days);Ui.gap(page,12);
+        page.addView(Ui.bold(this,"Темп и ожидание · "+days+" дней",16,Ui.foreground(this)));Ui.gap(page,8);
+        page.addView(Ui.text(this,"Скорость диктовки: "+(performance.speechMs()>0?performance.wordsPerMinute()+" слов/мин":"—"),15,Ui.foreground(this)));
+        page.addView(Ui.text(this,"Распознавание: "+average(performance.recognitionMs(),performance.recognitionCount())+" · "+amount(performance.recognitionCount(),"запись","записи","записей"),14,Ui.foreground(this)));
+        page.addView(Ui.text(this,"Обработка текста: "+average(performance.editingMs(),performance.editingCount())+" · "+amount(performance.editingCount(),"ответ","ответа","ответов"),14,Ui.foreground(this)));
+        page.addView(Ui.text(this,"Темп — по исходной речи без пауз. Ожидание — среднее успешных этапов, включая сеть. Новые показатели собираются с 1.0.17.",12,Ui.muted(this)));Ui.gap(page,12);
         LinearLayout fillers=Ui.column(this);addRanked(fillers,snapshot.fillers(),false,"Пока нет данных.");
         Ui.disclosure(page,"Слова-паразиты",fillers);Ui.gap(page,8);
         LinearLayout errors=Ui.column(this);addRanked(errors,snapshot.errors(),true,"Сбоев пока нет.");
@@ -46,5 +52,7 @@ public final class StatsActivity extends Activity {
         values.entrySet().stream().sorted(Map.Entry.<String,Long>comparingByValue().reversed().thenComparing(Map.Entry::getKey)).limit(8)
             .forEach(e->parent.addView(Ui.text(this,(errors?UsageStats.ERRORS.get(e.getKey()):e.getKey())+" — "+e.getValue(),15,Ui.foreground(this))));
     }
+    private static String amount(long n,String one,String few,String many){long last=n%100;return n+" "+(last>=11&&last<=14?many:n%10==1?one:n%10>=2&&n%10<=4?few:many);}
+    private static String average(long ms,long count){return count>0?String.format(Locale.ROOT,"%.1f с",ms/(count*1000d)):"—";}
     static String duration(long ms){long seconds=ms/1000;return String.format(Locale.ROOT,"%d:%02d:%02d",seconds/3600,(seconds/60)%60,seconds%60);}
 }

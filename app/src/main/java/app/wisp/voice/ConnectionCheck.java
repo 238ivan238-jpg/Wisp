@@ -23,6 +23,7 @@ final class ConnectionCheck {
     static String error(Exception e){
         if(e instanceof Offline)return "Нет интернета. Проверьте подключение.";
         return switch(GroqClient.failureCategory(e)){
+            case "audio"->"Не удалось подготовить части. Аудио сохранено во вкладке «Записи».";
             case "auth"->"Groq не принял ключ (401). Проверьте его в настройках.";
             case "access"->"Groq запретил доступ (403). Проверьте сеть или VPN.";
             case "limit"->"Лимит Groq исчерпан (429). Повторите позже.";

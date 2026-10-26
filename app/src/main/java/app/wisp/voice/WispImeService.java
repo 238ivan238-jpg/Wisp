@@ -28,6 +28,8 @@ public final class WispImeService extends InputMethodService {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private SecureSettings settings;
+    private HeadsetRoute route;
+    private HeadsetButtons headset;
     private RecoveryStore recovery;
     private RecoveryStore.Entry draft;
     private String detachedRecovery="";
@@ -45,14 +47,14 @@ public final class WispImeService extends InputMethodService {
     private long sessionTime;
     private String activeMode="clean";
     private int generation;
-    private boolean busy,sensitive,dragging,longPressed;
+    private boolean busy,sensitive,dragging,longPressed,inputVisible;
     private float downX,downY,startX,startY;
     private int safeTop,safeBottom,safeLeft,safeRight;
     private FrameLayout root;
     private TextView status;
     private VoiceControls mic;
     @Override public void onCreate(){
-        super.onCreate();settings=new SecureSettings(this);stats=new UsageStats(this);journal=new DiagnosticLog(this);recovery=new RecoveryStore(this);preflight=client->ConnectionCheck.check(this,settings,client);
+        super.onCreate();settings=new SecureSettings(this);stats=new UsageStats(this);journal=new DiagnosticLog(this);headset=new HeadsetButtons(this,new HeadsetButtons.Actions(){public void toggle(){if(!inputVisible||sensitive||busy)return;if(recorder!=null){if(clock.paused())pauseRecording();else stopAndProcess();}else startRecording(false);}public void pause(){if(inputVisible&&!sensitive&&recorder!=null&&!clock.paused())pauseRecording();}public void stop(){if(inputVisible&&!sensitive&&recorder!=null)stopAndProcess();}public void play(){if(!inputVisible||sensitive||busy)return;if(recorder==null)startRecording(false);else if(clock.paused())pauseRecording();}});recovery=new RecoveryStore(this);preflight=client->ConnectionCheck.check(this,settings,client);
         File[] stale=getCacheDir().listFiles((dir,name)->name.startsWith("wisp-audio-")&&name.endsWith(".m4a"));
         if(stale!=null)for(File f:stale)f.delete();
     }
@@ -145,8 +147,10 @@ public final class WispImeService extends InputMethodService {
         out.touchableRegion.op(new Rect(x,y,x+view.getWidth(),y+view.getHeight()),Region.Op.UNION);
     }
     @Override public void onStartInput(EditorInfo info,boolean restarting){super.onStartInput(info,restarting);cancelSession();sensitive=info==null||DictationText.sensitive(info.inputType);resetUi();}
-    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);resetUi();}
+    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);inputVisible=true;resetUi();headsetState();}
+    private void headsetState(){if(headset!=null)headset.update(inputVisible&&settings.headsetButtons()&&!sensitive&&!busy,recorder!=null,clock.paused());}
     private void resetUi(){
+        headsetState();
         if(status==null)return;setStatus(sensitive?"В полях паролей диктовка отключена":"");
         mic.setRetry(!detachedRecovery.isEmpty());mic.setEnabled(!sensitive);mic.setTranslation(false);mic.setState(VoiceBubble.IDLE);mic.setProgress(0);
     }
@@ -157,11 +161,19 @@ public final class WispImeService extends InputMethodService {
         if(!settings.hasKey()){journal.event(DiagnosticLog.session(),DiagnosticLog.Stage.KEY_STORAGE,DiagnosticLog.Outcome.FAILURE,settings.mode(),0,-1,-1);error("Удерживайте микрофон и сохраните API-ключ Groq в настройках.");return;}
         cancelSession();detachedRecovery="";
         trace=DiagnosticLog.session();tracePending=true;activeMode=settings.modeForRecording(english);mic.setTranslation(english);
-        busy=true;mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);setStatus("Проверяю подключение…");
+        busy=true;headsetState();mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);setStatus("Проверяю подключение…");
         int token=generation;String checkTrace=trace,checkMode=activeMode;GroqClient client=GroqClient.preflight(journal,trace,activeMode);activeApi=client;
         journal.event(trace,DiagnosticLog.Stage.PREFLIGHT,ConnectionCheck.vpn(this)?DiagnosticLog.Outcome.VPN_ACTIVE:DiagnosticLog.Outcome.VPN_INACTIVE,activeMode,0,-1,-1);
-        request=worker.submit(()->{try{preflight.check(client);journal.event(checkTrace,DiagnosticLog.Stage.PREFLIGHT,DiagnosticLog.Outcome.SUCCESS,checkMode,0,-1,-1);post(token,()->{busy=false;activeApi=null;beginRecording();});}
+        request=worker.submit(()->{try{preflight.check(client);journal.event(checkTrace,DiagnosticLog.Stage.PREFLIGHT,DiagnosticLog.Outcome.SUCCESS,checkMode,0,-1,-1);post(token,()->{busy=false;activeApi=null;prepareInput();});}
             catch(Exception e){journal.failure(checkTrace,DiagnosticLog.Stage.PREFLIGHT,checkMode,e);post(token,()->{busy=false;tracePending=false;error(ConnectionCheck.error(e));});}});
+    }
+    private void prepareInput(){
+        busy=true;headsetState();route=new HeadsetRoute(this,settings.preferHeadset());int token=generation;
+        if(settings.preferHeadset())setStatus("Подключаю микрофон гарнитуры…");
+        route.whenReady(handler,ready->{if(token!=generation)return;busy=false;
+            if(!ready){cancelSession();setStatus("Гарнитура не подключилась. Проверьте её или выключите предпочтение в настройках.");return;}
+            beginRecording();
+        });
     }
     @SuppressWarnings("deprecation")
     private void beginRecording(){
@@ -169,13 +181,13 @@ public final class WispImeService extends InputMethodService {
         try{
             audio=File.createTempFile("wisp-audio-",".m4a",getCacheDir());
             recorder=Build.VERSION.SDK_INT>=31?new MediaRecorder(this):new MediaRecorder();
-            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            recorder.setAudioSource(route.source());route.apply(recorder);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setAudioChannels(1);recorder.setAudioSamplingRate(16000);
             recorder.setAudioEncodingBitRate(64000);recorder.setOutputFile(audio.getAbsolutePath());recorder.setMaxDuration(RecordingLimits.MAX_DURATION_MS);
             recorder.setOnInfoListener((r,what,extra)->{if(what==MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED)stopAndProcess();});
             recorder.setOnErrorListener((r,what,extra)->{journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.FAILURE,activeMode,0,-1,-1);stats.recordFailure("microphone");cancelSession();error("Микрофон прервал запись. Попробуйте ещё раз.");});
             recorder.prepare();recorder.start();started=SystemClock.elapsedRealtime();clock.start(started);sessionTime=System.currentTimeMillis();
-            mic.setEnabled(true);mic.setState(VoiceBubble.RECORDING);handler.post(tick);
+            mic.setEnabled(true);mic.setState(VoiceBubble.RECORDING);handler.post(tick);headsetState();
         }catch(Exception e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,activeMode,e);stats.recordFailure("microphone");cancelSession();error("Не удалось включить микрофон. Проверьте разрешение и другие приложения записи.");}
     }
     private final Runnable tick=new Runnable(){public void run(){
@@ -188,7 +200,7 @@ public final class WispImeService extends InputMethodService {
         if(recorder==null)return;long duration=clock.elapsed(SystemClock.elapsedRealtime());
         MediaRecorder r=recorder;recorder=null;handler.removeCallbacks(tick);
         try{r.stop();}catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,activeMode,e);stats.recordFailure("microphone");r.release();cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
-        r.release();
+        r.release();if(route!=null){route.close();route=null;}
         if(duration<650){cancelSession();error("Запись слишком короткая. Говорите хотя бы секунду.");return;}
         stats.recordUse(sessionTime,duration);
         journal.event(trace,DiagnosticLog.Stage.RECORDING,DiagnosticLog.Outcome.SUCCESS,activeMode,duration,-1,-1);
@@ -201,16 +213,21 @@ public final class WispImeService extends InputMethodService {
         try{if(clock.paused()){recorder.resume();RecorderLevel.read(recorder,false);clock.resume(SystemClock.elapsedRealtime());mic.setState(VoiceBubble.RECORDING);journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.RESUMED,activeMode,0,-1,-1);}
             else{recorder.pause();clock.pause(SystemClock.elapsedRealtime());mic.setState(VoiceBubble.PAUSED);journal.event(trace,DiagnosticLog.Stage.PAUSE,DiagnosticLog.Outcome.SUCCESS,activeMode,0,-1,-1);}}
         catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.RECORDING,activeMode,e);cancelSession();error("Запись прервалась. Проверьте вкладку «Записи».");}
+        headsetState();
     }
     private void openRecovery(){startActivity(new Intent(this,RecoveryActivity.class).putExtra("recovery_id",detachedRecovery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
     private void retry(){if(busy||recorder!=null||draft==null||draft.handed||sensitive)return;submitDraft();}
     private void submitDraft(){
-        busy=true;mic.setRetry(false);mic.setEnabled(false);mic.setTranslation("translate".equals(draft.mode));mic.setState(VoiceBubble.WORKING);setStatus("Обрабатываю запись…");
+        busy=true;headsetState();mic.setRetry(false);mic.setEnabled(false);mic.setTranslation("translate".equals(draft.mode));mic.setState(VoiceBubble.WORKING);setStatus("Обрабатываю запись…");
         int token=generation;RecoveryStore.Entry entry=draft;String operationTrace=trace,mode=entry.mode;
         GroqClient api=new GroqClient(journal,operationTrace,mode);activeApi=api;
         request=worker.submit(()->{try{
             String key=entry.text.isEmpty()||!entry.error.isEmpty()?settings.readKey():"";
-            var result=RecoveryJob.run(recovery,entry,getCacheDir(),api,key,original->post(token,()->setStatus("translate".equals(mode)?"Перевожу на английский…":"Обрабатываю текст…")));
+            var result=RecoveryJob.run(recovery,entry,getCacheDir(),api,key,new RecoveryJob.Observer(){
+                public void progress(JobProgress progress){post(token,()->{setStatus(progress.label());mic.setWorkingLabel(progress.label());});}
+                public void speech(RecoveryStore.Entry e){stats.recordSpeech(e.time,e.original,e.duration);}
+                public void timing(RecoveryStore.Entry e,UsageStats.WaitStage stage,long ms){stats.recordWait(e.time,stage,ms);}
+            });
             post(token,()->deliver(token,result));
         }catch(Exception e){journal.failure(operationTrace,DiagnosticLog.Stage.RECOVERY,mode,e);post(token,()->{tracePending=false;stats.recordFailure(GroqClient.failureCategory(e));busy=false;error(ConnectionCheck.error(e)+" Нажмите ↻.");mic.setRetry(draft!=null&&!draft.handed);});}});
     }
@@ -222,7 +239,8 @@ public final class WispImeService extends InputMethodService {
         error("Проверьте поле. Копия текста — Wisp → Записи.");mic.setRetry(draft!=null&&!draft.handed);
     }
     private void deliver(int token,DictationPipeline.Result result){
-        if(token!=generation||sensitive)return;busy=false;tracePending=false;resetUi();
+        if(token!=generation||sensitive)return;busy=true;tracePending=false;headsetState();mic.setEnabled(false);mic.setState(VoiceBubble.WORKING);mic.setWorkingLabel("Вставляю текст…");setStatus("Вставляю текст…");
+        try{
         journal.event(trace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.START,activeMode,0,-1,-1);
         if(!result.errorCategory().isEmpty())stats.recordFailure(result.errorCategory());
         InputConnection ic=getCurrentInputConnection();
@@ -235,8 +253,9 @@ public final class WispImeService extends InputMethodService {
         stats.recordInsertion(sessionTime>0?sessionTime:System.currentTimeMillis(),result.original(),result.text(),activeMode,result.warning().isEmpty());
         journal.event(trace,DiagnosticLog.Stage.INSERTION,DiagnosticLog.Outcome.SUCCESS,activeMode,0,UsageStats.words(result.original()),UsageStats.words(result.text()));
         if(draft!=null){if(result.warning().isEmpty())recovery.delete(draft.id);draft=null;}
-        if(!result.warning().isEmpty())setStatus("Вставлен исходный текст. Обработка — во вкладке «Записи».");
+        if(result.warning().isEmpty()){setStatus("Текст вставлен.");int current=generation;handler.postDelayed(()->{if(current==generation&&!busy&&recorder==null&&"Текст вставлен.".contentEquals(status.getText()))setStatus("");},1800);}else setStatus("Вставлен исходный текст. Обработка — во вкладке «Записи».");
         }catch(RuntimeException e){journal.failure(trace,DiagnosticLog.Stage.INSERTION,activeMode,e);stats.recordFailure("input");insertionFailure();}
+        }finally{String message=status==null?"":status.getText().toString();busy=false;resetUi();mic.setRetry(draft!=null&&!draft.handed);setStatus(message);}
     }
     private void post(int token,Runnable action){handler.post(()->{if(token!=generation)return;if(getSystemService(android.app.KeyguardManager.class).isKeyguardLocked()){cancelSession();resetUi();return;}action.run();});}
     private void error(String message){if(status==null)return;resetUi();setStatus(message);}
@@ -246,14 +265,15 @@ public final class WispImeService extends InputMethodService {
         generation++;handler.removeCallbacksAndMessages(null);
         if(recorder!=null){boolean valid=false;try{recorder.stop();valid=true;}catch(RuntimeException ignored){}recorder.release();recorder=null;
             long duration=clock.elapsed(SystemClock.elapsedRealtime());if(valid&&duration>=650&&audio!=null)try{detachedRecovery=recovery.create(audio,sessionTime,duration,activeMode,settings,trace).id;}catch(Exception e){journal.failure(trace,DiagnosticLog.Stage.RECOVERY,activeMode,e);}}
+        if(route!=null){route.close();route=null;}
         if(request!=null){request.cancel(true);request=null;}
         if(activeApi!=null){activeApi.cancel();activeApi=null;}
         if(audio!=null){audio.delete();audio=null;}
         draft=null;busy=false;
     }
     @Override public void onConfigurationChanged(Configuration config){cancelSession();super.onConfigurationChanged(config);if(isInputViewShown())setInputView(onCreateInputView());}
-    @Override public void onFinishInputView(boolean finishingInput){cancelSession();resetUi();super.onFinishInputView(finishingInput);}
-    @Override public void onFinishInput(){cancelSession();resetUi();super.onFinishInput();}
-    @Override public void onWindowHidden(){cancelSession();resetUi();super.onWindowHidden();}
-    @Override public void onDestroy(){cancelSession();worker.shutdownNow();super.onDestroy();}
+    @Override public void onFinishInputView(boolean finishingInput){inputVisible=false;cancelSession();resetUi();super.onFinishInputView(finishingInput);}
+    @Override public void onFinishInput(){inputVisible=false;cancelSession();resetUi();super.onFinishInput();}
+    @Override public void onWindowHidden(){inputVisible=false;cancelSession();resetUi();super.onWindowHidden();}
+    @Override public void onDestroy(){cancelSession();if(headset!=null)headset.close();worker.shutdownNow();super.onDestroy();}
 }

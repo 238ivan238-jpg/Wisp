@@ -239,7 +239,8 @@ final class GroqClient {
         String hints=spellingHints(vocabulary);
         if(!hints.isEmpty())field(out,boundary,"prompt",hints);
         if("ru".equals(language)||"en".equals(language)) field(out,boundary,"language",language);
-        out.write(("--"+boundary+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation.m4a\"\r\nContent-Type: audio/mp4\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        boolean wave=audio.getName().endsWith(".wav");
+        out.write(("--"+boundary+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation."+(wave?"wav":"m4a")+"\"\r\nContent-Type: "+(wave?"audio/wav":"audio/mp4")+"\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         try(InputStream in=new FileInputStream(audio)) {
             byte[] buffer=new byte[8192];int count;
             while((count=in.read(buffer))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();out.write(buffer,0,count);}
@@ -260,16 +261,18 @@ final class GroqClient {
         return clean(text,key,vocabulary,false);
     }
     String clean(String text,String key,String vocabulary,boolean emojis) throws Exception {
-        return edit(text,key,vocabulary,false,emojis);
+        return clean(text,key,vocabulary,emojis,EmojiStyle.MODERATE);
     }
     String translate(String text,String key,String vocabulary) throws Exception {
         return translate(text,key,vocabulary,false);
     }
     String translate(String text,String key,String vocabulary,boolean emojis) throws Exception {
-        return edit(text,key,vocabulary,true,emojis);
+        return translate(text,key,vocabulary,emojis,EmojiStyle.MODERATE);
     }
-    private String edit(String text,String key,String vocabulary,boolean translate,boolean emojis) throws Exception {
-        try { return cleanWithModel(text,key,vocabulary,CLEANER,translate,emojis); }
+    String clean(String text,String key,String vocabulary,boolean emojis,EmojiStyle style)throws Exception{return edit(text,key,vocabulary,false,emojis,style);}
+    String translate(String text,String key,String vocabulary,boolean emojis,EmojiStyle style)throws Exception{return edit(text,key,vocabulary,true,emojis,style);}
+    private String edit(String text,String key,String vocabulary,boolean translate,boolean emojis,EmojiStyle style) throws Exception {
+        try { return cleanWithModel(text,key,vocabulary,CLEANER,translate,emojis,style); }
         catch(ApiException first) {
             // Retry only a diagnosed model availability failure, never auth, limits,
             // generic forbidden access, malformed requests or incomplete generations.
@@ -282,7 +285,7 @@ final class GroqClient {
             ApiException last=first;
             for(String candidate:CLEANERS) {
                 if(candidate.equals(CLEANER)||!available.contains(candidate))continue;
-                try{return cleanWithModel(text,key,vocabulary,candidate,translate,emojis);}
+                try{return cleanWithModel(text,key,vocabulary,candidate,translate,emojis,style);}
                 catch(ApiException e){if(!e.unavailableModel)throw e;last=e;}
             }
             throw new ApiException(last.status,last.providerCode,true,last.getMessage()+" Разрешите текстовую модель в аккаунте Groq или выключите «Чистый текст» в настройках Wisp для ввода без обработки.");
@@ -292,9 +295,9 @@ final class GroqClient {
         String value=vocabulary==null?"":vocabulary.strip();
         return value.substring(0,Math.min(500,value.length()));
     }
-    private String cleanWithModel(String text,String key,String vocabulary,String model,boolean translate,boolean emojis) throws Exception {
+    private String cleanWithModel(String text,String key,String vocabulary,String model,boolean translate,boolean emojis,EmojiStyle style) throws Exception {
         lastModel=model;
-        String prompt=(translate?TRANSLATION_PROMPT:PROMPT)+(emojis?EMOJI_PROMPT:"");
+        String prompt=(translate?TRANSLATION_PROMPT:PROMPT)+(emojis?EMOJI_PROMPT+style.instruction:"");
         String data=new JSONObject().put("dictation",text).put("spelling_hints",spellingHints(vocabulary)).toString();
         JSONObject body=new JSONObject().put("model",model).put("temperature",0).put("max_completion_tokens",4096)
             .put("messages",new JSONArray().put(new JSONObject().put("role","system").put("content",prompt))
@@ -315,6 +318,7 @@ final class GroqClient {
         return result;
     }
     static String failureCategory(Exception e){
+        if(e instanceof AudioPreparationException)return "audio";
         if(e instanceof ApiException a){
             if(a.unavailableModel)return "model";
             return switch(a.status){case 401->"auth";case 403->"access";case 402->"billing";case 429->"limit";case 413->"size";

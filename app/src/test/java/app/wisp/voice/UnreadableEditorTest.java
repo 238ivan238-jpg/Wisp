@@ -26,6 +26,7 @@ public class UnreadableEditorTest {
         final GboardCompanionService service;
         final InputMethod input;
         int reads,commits;
+        Runnable checkCommit;
         String committed="";
         Editor()throws Exception{
             var app=RuntimeEnvironment.getApplication();Shadows.shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
@@ -38,7 +39,7 @@ public class UnreadableEditorTest {
             Object remote=Proxy.newProxyInstance(remoteInterface.getClassLoader(),new Class<?>[]{remoteInterface},(proxy,method,args)->{
                 if(method.getName().equals("asBinder"))return new Binder();
                 if(method.getName().equals("getSurroundingText")){reads++;((CompletableFuture<?>)args[args.length-1]).complete(null);}
-                if(method.getName().equals("commitText")){commits++;committed=args[1].toString();assertEquals(1,args[2]);}
+                if(method.getName().equals("commitText")){if(checkCommit!=null)checkCommit.run();commits++;committed=args[1].toString();assertEquals(1,args[2]);}
                 return null;
             });
             Class<?> group=Class.forName("com.android.internal.inputmethod.CancellationGroup");
@@ -117,6 +118,21 @@ public class UnreadableEditorTest {
             VoiceLevel meter=ReflectionHelpers.getField(controls.getChildAt(0),"meter");meter.snap();assertTrue(meter.level(1)>.9f);
             controls.getChildAt(1).performClick();int reads=VoiceMeterTest.LevelRecorder.reads;tick.run();assertEquals(reads,VoiceMeterTest.LevelRecorder.reads);assertEquals(0,meter.level(1),0);
             controls.getChildAt(1).performClick();VoiceMeterTest.LevelRecorder.fail=true;tick.run();assertNotNull(ReflectionHelpers.getField(editor.service,"recorder"));assertEquals(0,editor.commits);
+        }
+    }
+
+    @Test public void headsetControlCannotStartRecordingInAPasswordField()throws Exception{
+        try(var editor=new Editor()){
+            new SecureSettings(editor.service).setHeadsetButtons(true);editor.service.changed();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            HeadsetButtons buttons=ReflectionHelpers.getField(editor.service,"headset");assertTrue(buttons.handle(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_HEADSETHOOK)));PauseAndPreflightTest.finishCheck(editor.service);assertNotNull(ReflectionHelpers.getField(editor.service,"recorder"));
+            EditorInfo password=new EditorInfo();password.inputType=InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD;editor.input.onStartInput(password,false);assertFalse(buttons.handle(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_HEADSETHOOK)));assertNull(ReflectionHelpers.getField(editor.service,"recorder"));
+        }
+    }
+
+    @Test public void controlsStayDisabledUntilTheActualInsertionFinishes()throws Exception{
+        try(var editor=new Editor()){
+            VoiceControls controls=ReflectionHelpers.getField(editor.service,"bubble");boolean[] checked={false};editor.checkCommit=()->{assertFalse(controls.getChildAt(0).isEnabled());assertTrue(controls.getChildAt(0).getContentDescription().toString().contains("Вставляю"));checked[0]=true;};
+            editor.deliver(new DictationPipeline.Result("Text","Text.",""));assertTrue(checked[0]);assertTrue(controls.getChildAt(0).isEnabled());
         }
     }
 

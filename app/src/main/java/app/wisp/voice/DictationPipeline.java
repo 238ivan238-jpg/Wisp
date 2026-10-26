@@ -20,10 +20,13 @@ final class DictationPipeline {
         return finish(api,original,key,vocabulary,mode,emojis);
     }
     static Result finish(GroqClient api,String original,String key,String vocabulary,String mode,boolean emojis)throws Exception {
+        return finish(api,original,key,vocabulary,mode,emojis,EmojiStyle.MODERATE);
+    }
+    static Result finish(GroqClient api,String original,String key,String vocabulary,String mode,boolean emojis,EmojiStyle style)throws Exception {
         if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();
         if("raw".equals(mode))return new Result(original,original,"");
         try {
-            String text="translate".equals(mode)?api.translate(original,key,vocabulary,emojis):api.clean(original,key,vocabulary,emojis);
+            String text="translate".equals(mode)?api.translate(original,key,vocabulary,emojis,style):api.clean(original,key,vocabulary,emojis,style);
             api.processingResult(original,text);
             return new Result(original,text,"");
         } catch(Exception e) {

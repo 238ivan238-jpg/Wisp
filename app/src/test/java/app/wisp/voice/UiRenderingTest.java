@@ -22,7 +22,7 @@ import static org.junit.Assert.*;
 public class UiRenderingTest {
     @Before public void disableAutomaticNetworkChecks(){RuntimeEnvironment.getApplication().getSharedPreferences("wisp_updates",0).edit().putBoolean("auto_check",false).commit();}
     private void render(View view,String name,int height) throws Exception {
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(220));
         int width=1032;
         view.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(height,height==2300?View.MeasureSpec.EXACTLY:View.MeasureSpec.AT_MOST));
@@ -98,5 +98,14 @@ public class UiRenderingTest {
     }
     @Test @Config(qualifiers="w393dp-h852dp-notnight-420dpi") public void renderLiveVoiceLevelsLight()throws Exception{renderVoiceLevels("voice-levels-light.png");}
     @Test @Config(qualifiers="w393dp-h852dp-night-420dpi") public void renderLiveVoiceLevelsDark()throws Exception{renderVoiceLevels("voice-levels-dark.png");}
+
+    @Test public void renderFeatureSettingsAndPerformanceStatistics()throws Exception{
+        var context=RuntimeEnvironment.getApplication();SecureSettings settings=new SecureSettings(context);settings.setEmojis(true);settings.setEmojiStyle(EmojiStyle.ACTIVE);
+        try(var controller=Robolectric.buildActivity(MainActivity.class).setup()){
+            render(controller.get().getWindow().getDecorView(),"voice-1.0.17.png",2300);controller.get().showSection(AppNavigation.SETTINGS);controller.get().getWindow().getDecorView().findViewWithTag("link_Шторка и гарнитура").performClick();render(controller.get().getWindow().getDecorView(),"quick-access.png",2300);
+        }
+        UsageStats stats=new UsageStats(context);long now=System.currentTimeMillis();stats.recordUse(now,10000);stats.recordSpeech(now,"one two three four five six seven eight nine ten",10000);stats.recordWait(now,UsageStats.WaitStage.RECOGNITION,1800);stats.recordWait(now,UsageStats.WaitStage.EDITING,900);
+        try(var controller=Robolectric.buildActivity(StatsActivity.class).setup()){render(controller.get().getWindow().getDecorView(),"performance.png",2300);}
+    }
 
 }

@@ -17,7 +17,7 @@ final class UsageStats {
         Map.entry("limit","Лимит Groq"),Map.entry("size","Размер записи"),Map.entry("request","Параметры запроса"),
         Map.entry("model","Недоступная модель"),Map.entry("server","Сервер Groq"),Map.entry("response","Ответ обработки"),
         Map.entry("timeout","Время ожидания"),Map.entry("tls","Защищённое соединение"),Map.entry("network","Сеть"),
-        Map.entry("input","Вставка текста"),Map.entry("microphone","Запись микрофона"),Map.entry("other","Другое"));
+        Map.entry("audio","Подготовка аудио"),Map.entry("input","Вставка текста"),Map.entry("microphone","Запись микрофона"),Map.entry("other","Другое"));
     private static final Map<String,Pattern> FILLERS;
     static {
         Map<String,Pattern> patterns=new LinkedHashMap<>();
@@ -72,6 +72,26 @@ final class UsageStats {
                 }
             }
         });
+    }
+    enum WaitStage {RECOGNITION,EDITING}
+    record Performance(long speechWords,long speechMs,long recognitionMs,long recognitionCount,long editingMs,long editingCount){
+        long wordsPerMinute(){return speechMs>0?Math.round(speechWords*60000d/speechMs):0;}
+    }
+    void recordSpeech(long when,String original,long durationMs){
+        long count=words(original),duration=Math.max(0,durationMs);
+        if(count==0||duration==0)return;
+        update(v->{JSONObject d=daily(v,when);add(d,"speechWords",count);add(d,"speechMs",duration);});
+    }
+    void recordWait(long when,WaitStage stage,long ms){
+        String prefix=stage==WaitStage.RECOGNITION?"recognition":"editing";
+        update(v->{JSONObject d=daily(v,when);add(d,prefix+"Ms",Math.max(0,ms));add(d,prefix+"Count",1);});
+    }
+    Performance performance(int period){
+        synchronized(LOCK){JSONObject days=read().optJSONObject("days");long[] sum=new long[6];
+            if(days!=null){String earliest=LocalDate.now().minusDays(Math.max(1,Math.min(365,period))-1).toString(),today=LocalDate.now().toString();
+                var keys=days.keys();while(keys.hasNext()){String date=keys.next();if(date.compareTo(earliest)<0||date.compareTo(today)>0)continue;JSONObject d=days.optJSONObject(date);if(d==null)continue;
+                    String[] fields={"speechWords","speechMs","recognitionMs","recognitionCount","editingMs","editingCount"};for(int i=0;i<fields.length;i++)sum[i]+=Math.max(0,d.optLong(fields[i]));}}
+            return new Performance(sum[0],sum[1],sum[2],sum[3],sum[4],sum[5]);}
     }
     void recordFailure(String category){String key=ERRORS.containsKey(category)?category:"other";update(v->add(child(v,"errors"),key,1));}
     private static Map<String,Long> counters(JSONObject value,Set<String> allowed){

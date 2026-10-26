@@ -38,7 +38,7 @@ public final class RecoveryActivity extends Activity {
                 var entries=store.list();if(entries.isEmpty())page.addView(Ui.text(this,"Здесь появятся записи, которые не удалось обработать или вставить.",15,Ui.muted(this)));
                 for(var e:entries){
                     String date=DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(new Date(e.time));
-                    String state=e.handed?"Передано в поле — проверьте текст":!e.text.isEmpty()&&e.error.isEmpty()?"Текст готов":!e.original.isEmpty()?"Есть исходный текст":"Есть аудиозапись";
+                    String state=e.handed?"Передано в поле — проверьте текст":!e.text.isEmpty()&&e.error.isEmpty()?"Текст готов":!e.availableText().isEmpty()?e.partCount>1&&e.original.isEmpty()?"Распознано частей: "+e.parts.size()+" из "+e.partCount:"Есть исходный текст":"Есть аудиозапись";
                     Button row=Ui.button(this,date+" · "+e.duration/1000+" с\n"+state,false);page.addView(row,Ui.fill(this,-2));Ui.gap(page,8);
                     row.setEnabled(!busy);row.setOnClickListener(v->{selected=e.id;render();});
                 }
@@ -48,7 +48,8 @@ public final class RecoveryActivity extends Activity {
     private void detail(LinearLayout page,RecoveryStore.Entry e){
         button(page,"‹ Все записи",()->{selected="";render();});
         if(e.handed){page.addView(Ui.text(this,"Текст уже передавался в приложение. Проверьте поле перед копированием: повторная обработка здесь ничего не вставляет.",13,Ui.muted(this)));Ui.gap(page,12);}
-        String text=e.text.isEmpty()?e.original:e.text;
+        if(e.original.isEmpty()&&!e.parts.isEmpty()){page.addView(Ui.text(this,"Распознано частей: "+e.parts.size()+" из "+e.partCount+". Ниже — неполная расшифровка.",13,Ui.muted(this)));Ui.gap(page,8);}
+        String text=e.text.isEmpty()?e.availableText():e.text;
         if(!text.isEmpty()){
             TextView body=Ui.text(this,text,16,Ui.foreground(this));body.setTextIsSelectable(true);page.addView(body);Ui.gap(page,16);
             button(page,"Скопировать текст",()->copy(text));
@@ -68,7 +69,7 @@ public final class RecoveryActivity extends Activity {
         request=worker.submit(()->{String error="";try{
             var entry=store.get(id);
             String key=entry.original.isEmpty()||!"raw".equals(entry.mode)?settings.readKey():"";
-            var result=RecoveryJob.run(store,entry,getCacheDir(),client,key,s->{});
+            var result=RecoveryJob.run(store,entry,getCacheDir(),client,key,new RecoveryJob.Observer(){public void progress(JobProgress stage){runOnUiThread(()->{if(!isDestroyed()&&busy)notice.setText(stage.label());});} public void speech(RecoveryStore.Entry e){new UsageStats(RecoveryActivity.this).recordSpeech(e.time,e.original,e.duration);} public void timing(RecoveryStore.Entry e,UsageStats.WaitStage stage,long ms){new UsageStats(RecoveryActivity.this).recordWait(e.time,stage,ms);}});
             if(!result.errorCategory().isEmpty())error="Исходный текст сохранён. Обработка пока недоступна.";
         }catch(Exception e){log.failure(trace,DiagnosticLog.Stage.RECOVERY,mode,e);error=ConnectionCheck.error(e);}
             String message=error;runOnUiThread(()->{if(isDestroyed())return;busy=false;render();if(!message.isEmpty())notice.setText(message);});
@@ -83,7 +84,7 @@ public final class RecoveryActivity extends Activity {
         File temporary=null;try(OutputStream out=getContentResolver().openOutputStream(data.getData(),"wt")){
             if(out==null)throw new IOException();var entry=store.get(exportId);
             if(exportAudio){temporary=store.audio(entry,getCacheDir());try(InputStream in=new FileInputStream(temporary)){byte[] block=new byte[8192];int count;while((count=in.read(block))!=-1)out.write(block,0,count);}}
-            else out.write((entry.text.isEmpty()?entry.original:entry.text).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            else out.write((entry.text.isEmpty()?entry.availableText():entry.text).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             Toast.makeText(this,"Файл сохранён",Toast.LENGTH_SHORT).show();
         }catch(Exception e){Toast.makeText(this,"Не удалось сохранить файл",Toast.LENGTH_SHORT).show();}finally{if(temporary!=null)temporary.delete();}
     }
